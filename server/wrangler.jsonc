@@ -1,0 +1,17 @@
+{
+  // Reference relay for the Partyline protocol. Operating it is deploying it:
+  //   wrangler deploy
+  // There are no secrets to configure — the relay is admin-less by design
+  // (SPEC.md §8). To run a closed relay, put an access layer in front.
+  "name": "partyline-relay",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-01",
+  "durable_objects": {
+    "bindings": [
+      { "name": "CHANNEL", "class_name": "ChannelDO" },
+      { "name": "GATE", "class_name": "RateLimitDO" }
+    ]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ChannelDO", "RateLimitDO"] }],
+  "observability": { "enabled": true }
+}
