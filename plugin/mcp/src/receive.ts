@@ -59,7 +59,7 @@ export class ChannelConnection {
     const url = `${relayUrl.replace(/^http/, "ws")}/v1/channels/${seat.channel_id}/stream`;
     this.status = "connecting";
     const ws = new WebSocket(url, {
-      headers: { Authorization: `Bearer ${seat.participant_token}` },
+      headers: { Authorization: `Bearer ${seat.party_token}` },
     });
     this.ws = ws;
 

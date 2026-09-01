@@ -17,7 +17,7 @@ async function poll(channelId: string, token: string, query = "") {
 describe("sending", () => {
   it("delivers an addressed message and reports the recipient's liveness", async () => {
     const { channelId, a, b } = await twoParty();
-    const res = await send(channelId, a.participant_token, b.participant_id, "hello beta");
+    const res = await send(channelId, a.party_token, b.party_id, "hello beta");
     expect(res.status).toBe(202);
     const body = (await res.json()) as {
       message_id: string;
@@ -27,7 +27,7 @@ describe("sending", () => {
     expect(body.message_id).toMatch(/^x_/);
     expect(body.seq).toBe(1);
     // §5: "queued" alone hides a misaddressed send — who got it must come back
-    expect(body.recipient.participant_id).toBe(b.participant_id);
+    expect(body.recipient.party_id).toBe(b.party_id);
     expect(body.recipient.display_name).toBe("beta");
     expect(typeof body.recipient.online).toBe("boolean");
   });
@@ -37,21 +37,21 @@ describe("sending", () => {
     const res = await post(
       `/v1/channels/${channelId}/messages`,
       { body: "hi" },
-      bearer(a.participant_token),
+      bearer(a.party_token),
     );
     expect(res.status).toBe(400);
   });
 
-  it("rejects a `to` that is not a current participant", async () => {
+  it("rejects a `to` that is not a current party", async () => {
     const { channelId, a } = await twoParty();
-    const res = await send(channelId, a.participant_token, "p_nobody", "hi");
+    const res = await send(channelId, a.party_token, "p_nobody", "hi");
     expect(res.status).toBe(409);
     expect(((await res.json()) as { error: string }).error).toBe("no_such_recipient");
   });
 
   it("rejects oversized bodies with 413", async () => {
     const { channelId, a, b } = await twoParty();
-    const res = await send(channelId, a.participant_token, b.participant_id, "x".repeat(70000));
+    const res = await send(channelId, a.party_token, b.party_id, "x".repeat(70000));
     expect(res.status).toBe(413);
   });
 
@@ -59,7 +59,7 @@ describe("sending", () => {
     const { channelId, a, b } = await twoParty();
     let limited = false;
     for (let i = 0; i < 125; i++) {
-      const res = await send(channelId, a.participant_token, b.participant_id, `m${i}`);
+      const res = await send(channelId, a.party_token, b.party_id, `m${i}`);
       if (res.status === 429) {
         limited = true;
         break;
@@ -73,16 +73,16 @@ describe("sending", () => {
 describe("long poll and ack", () => {
   it("returns queued messages in seq order with full envelopes", async () => {
     const { channelId, a, b } = await twoParty();
-    await send(channelId, a.participant_token, b.participant_id, "one");
-    await send(channelId, a.participant_token, b.participant_id, "two", "x_earlier");
-    const { messages, last_seq } = await poll(channelId, b.participant_token);
+    await send(channelId, a.party_token, b.party_id, "one");
+    await send(channelId, a.party_token, b.party_id, "two", "x_earlier");
+    const { messages, last_seq } = await poll(channelId, b.party_token);
     expect(messages.map((m) => m.seq)).toEqual([1, 2]);
     expect(last_seq).toBe(2);
     const first = messages[0];
     expect(first?.v).toBe(1);
     expect(first?.channel_id).toBe(channelId);
     expect(first?.from.display_name).toBe("alpha");
-    expect(first?.to).toBe(b.participant_id);
+    expect(first?.to).toBe(b.party_id);
     expect(first?.body).toBe("one");
     expect(first?.reply_to).toBeNull();
     expect(messages[1]?.reply_to).toBe("x_earlier");
@@ -91,44 +91,44 @@ describe("long poll and ack", () => {
   it("redelivers until acked; the ack cursor is idempotent", async () => {
     const { channelId, a, b } = await twoParty();
     for (const text of ["one", "two", "three"]) {
-      await send(channelId, a.participant_token, b.participant_id, text);
+      await send(channelId, a.party_token, b.party_id, text);
     }
     // reading deletes nothing
-    await poll(channelId, b.participant_token);
-    const again = await poll(channelId, b.participant_token);
+    await poll(channelId, b.party_token);
+    const again = await poll(channelId, b.party_token);
     expect(again.messages).toHaveLength(3);
 
     const ack = await post(
       `/v1/channels/${channelId}/inbox/ack`,
       { seq: 2 },
-      bearer(b.participant_token),
+      bearer(b.party_token),
     );
     expect(ack.status).toBe(204);
-    const after = await poll(channelId, b.participant_token);
+    const after = await poll(channelId, b.party_token);
     expect(after.messages.map((m) => m.seq)).toEqual([3]);
 
     // acking below the cursor changes nothing
-    await post(`/v1/channels/${channelId}/inbox/ack`, { seq: 1 }, bearer(b.participant_token));
-    const still = await poll(channelId, b.participant_token);
+    await post(`/v1/channels/${channelId}/inbox/ack`, { seq: 1 }, bearer(b.party_token));
+    const still = await poll(channelId, b.party_token);
     expect(still.messages.map((m) => m.seq)).toEqual([3]);
   });
 
   it("filters with after_seq without acknowledging", async () => {
     const { channelId, a, b } = await twoParty();
-    await send(channelId, a.participant_token, b.participant_id, "one");
-    await send(channelId, a.participant_token, b.participant_id, "two");
-    const filtered = await poll(channelId, b.participant_token, "?after_seq=1");
+    await send(channelId, a.party_token, b.party_id, "one");
+    await send(channelId, a.party_token, b.party_id, "two");
+    const filtered = await poll(channelId, b.party_token, "?after_seq=1");
     expect(filtered.messages.map((m) => m.seq)).toEqual([2]);
-    const everything = await poll(channelId, b.participant_token);
+    const everything = await poll(channelId, b.party_token);
     expect(everything.messages).toHaveLength(2);
   });
 
   it("holds an empty poll until a message arrives", async () => {
     const { channelId, a, b } = await twoParty();
-    const held = poll(channelId, b.participant_token, "?wait=10");
+    const held = poll(channelId, b.party_token, "?wait=10");
     // give the poll a moment to register, then send
     await new Promise((resolve) => setTimeout(resolve, 100));
-    await send(channelId, a.participant_token, b.participant_id, "wake up");
+    await send(channelId, a.party_token, b.party_id, "wake up");
     const result = await held;
     expect(result.messages.map((m) => m.body)).toEqual(["wake up"]);
   });

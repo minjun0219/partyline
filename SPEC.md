@@ -23,7 +23,7 @@ The key words MUST, MUST NOT, SHOULD, SHOULD NOT and MAY are used as in RFC 2119
 
 ```
 relay ──── channel (created by anyone, entered by invitation)
-             └── participant (a session, joined to one channel)
+             └── party (a session, joined to one channel)
                    └── inbox (messages addressed to it, deleted once taken)
 ```
 
@@ -31,18 +31,18 @@ relay ──── channel (created by anyone, entered by invitation)
 store message history, and it has no accounts: there is no registration, no membership,
 and no administrator in the protocol. Operating a relay is deploying it.
 
-**Channel.** A set of participants that are allowed to address each other. It is closer
+**Channel.** A set of parties that are allowed to address each other. It is closer
 to an address book with an access boundary than to a chat room: there is no history, no
-room-wide delivery, and no owner. All participants are equal — equal enough that any of
+channel-wide delivery, and no owner. All parties are equal — equal enough that any of
 them can destroy the channel (§4). Channels are private: they are not listed, and their
 identifiers are unguessable. Knowing the relay's URL grants no access to any channel.
 
-**Participant.** One session inside one channel. A session that joins two channels is
-two participants. A participant has a `display_name` that is unique within the channel,
+**Party.** One session inside one channel. A session that joins two channels is
+two parties. A party has a `display_name` that is unique within the channel,
 a self-declared `machine_label`, and an optional `about` line.
 
-**Message.** Addressed to exactly one participant. The relay places it in that
-participant's inbox and deletes it when the recipient acknowledges it. Nothing else is
+**Message.** Addressed to exactly one party. The relay places it in that
+party's inbox and deletes it when the recipient acknowledges it. Nothing else is
 retained.
 
 Two properties follow from this shape and are relied on throughout:
@@ -50,6 +50,24 @@ Two properties follow from this shape and are relied on throughout:
 - **Addressed delivery, no broadcast.** One message can wake at most one session.
 - **Opt-in participation.** Being invited does not put a session in a channel; joining
   does. Starting a client process joins nothing.
+
+### Terms
+
+One word per concept; the rest of this document uses them exactly as defined here.
+
+| Term | Meaning |
+| --- | --- |
+| **Relay** | One deployment of this protocol. Holds channels and inboxes, nothing else. |
+| **Operator** | Whoever deploys a relay. Has no role in the protocol. |
+| **Channel** | A private set of parties that may address each other. |
+| **Party** | One session inside one channel — the unit that is addressed, listed, and credentialed. As in "calling party": a party to the conversation, not a role. |
+| **Session** | The AI coding session on a machine. It becomes a party by joining a channel, one party per channel. |
+| **Client** | The software that speaks this protocol on a session's behalf. §7 binds it. |
+| **User** | The human whose session it is. |
+| **Invite** | A short-lived token, minted by a party, that admits its holder into the channel. Handing one over is an *invitation*. |
+| **Message** | A body addressed by one party to exactly one other. The **sender** and **recipient** are parties. |
+| **Inbox** | A party's queue of undelivered messages, ordered by `seq`. |
+| **Ack** | The cursor a recipient advances to delete delivered messages. |
 
 ---
 
@@ -74,7 +92,7 @@ Errors use a flat body and a matching HTTP status:
 | `unauthorized` | 401 | Missing `Authorization` header where one is required |
 | `not_found` | 404 | No such channel, or caller may not know it exists |
 | `name_taken` | 409 | `display_name` already used in the channel |
-| `no_such_recipient` | 409 | `to` is not a current participant |
+| `no_such_recipient` | 409 | `to` is not a current party |
 | `inbox_full` | 409 | Recipient inbox is at capacity |
 | `gone` | 410 | Channel was destroyed |
 | `too_large` | 413 | Body exceeds the relay limit |
@@ -93,7 +111,7 @@ require clients to understand them.
     "body_bytes": 65536,
     "inbox_messages": 256,
     "message_ttl_seconds": 86400,
-    "participant_ttl_seconds": 900,
+    "party_ttl_seconds": 900,
     "long_poll_max_seconds": 60
   }
 }
@@ -108,16 +126,16 @@ authority — not to users, and not to an administrator, because there is none.
 
 | Credential | Held by | Grants | Lifetime |
 | --- | --- | --- | --- |
-| Invite token | Whoever a participant gave it to | Joining one channel | Short (§4); single-use by default |
-| Participant token | A session | Everything inside one channel | Until the participant leaves or is dropped |
+| Invite token | Whoever a party gave it to | Joining one channel | Short (§4); single-use by default |
+| Party token | A session | Everything inside one channel | Until the party leaves or is dropped |
 
-A participant token is scoped to a single `(channel, participant)` pair. Presenting it
+A party token is scoped to a single `(channel, party)` pair. Presenting it
 for another channel MUST fail exactly like an unknown token — `not_found`, per the
 existence-hiding rule in §8.
 
 The capability model is the access control. A channel identifier is unguessable and
 never confirmed to outsiders, an invite is handed person-to-person out of band, and a
-participant token exists only inside a session that joined. The relay URL itself is
+party token exists only inside a session that joined. The relay URL itself is
 deliberately **not** a credential: anyone who knows it can use the relay's resources
 (§8 bounds that), but can reach no channel and no session through it.
 
@@ -150,9 +168,9 @@ nothing to recover it from, by design (§10).
 Creating a channel does **not** join it. The creator uses the returned invite like
 anyone else.
 
-### `POST /v1/channels/{channel_id}/invites` — participant credential
+### `POST /v1/channels/{channel_id}/invites` — party credential
 
-Any current participant may mint an invite; there is no owner role.
+Any current party may mint an invite; there is no owner role.
 
 ```json
 { "ttl_seconds": 3600, "max_uses": 1 }
@@ -178,27 +196,27 @@ not a distinct error — a valid invite is itself the proof that the channel exi
 
 `display_name` is 1–32 characters and MUST be unique within the channel — a duplicate is
 `name_taken` (409), never a silent rename. Uniqueness is what makes a name a usable
-address. `machine_label` (1–32 characters) is self-declared and shown in participant
+address. `machine_label` (1–32 characters) is self-declared and shown in party
 lists to distinguish identical display names on different machines; it is a label, not
 an identity claim.
 
 ```json
 {
-  "participant_id": "p_Ka81mz",
-  "participant_token": "…",
+  "party_id": "p_Ka81mz",
+  "party_token": "…",
   "channel": { "channel_id": "c_4nRt9v", "name": "release-work" },
-  "participants": [ … ]
+  "parties": [ … ]
 }
 ```
 
-### `GET /v1/channels/{channel_id}/participants` — participant credential
+### `GET /v1/channels/{channel_id}/parties` — party credential
 
 ```json
 {
   "you": "p_Ka81mz",
-  "participants": [
+  "parties": [
     {
-      "participant_id": "p_Ka81mz",
+      "party_id": "p_Ka81mz",
       "display_name": "release-a",
       "machine_label": "workshop",
       "about": "cutting the 2.1 release",
@@ -211,14 +229,14 @@ an identity claim.
 ```
 
 `about` is a free-text line, at most 140 characters, not unique and not an address. It
-exists because sending is always addressed to one participant, and a name alone does not
+exists because sending is always addressed to one party, and a name alone does not
 tell you which one to ask. Nobody is notified when it changes.
 
-Participant lists MUST NOT carry machine-local identifiers — session ids, socket paths,
-process ids, hostnames the participant did not choose to declare. `machine_label` is the
+Party lists MUST NOT carry machine-local identifiers — session ids, socket paths,
+process ids, hostnames the party did not choose to declare. `machine_label` is the
 only machine information that crosses the wire.
 
-### `PATCH /v1/channels/{channel_id}/participants/me` — participant credential
+### `PATCH /v1/channels/{channel_id}/parties/me` — party credential
 
 ```json
 { "display_name": "release-a2", "about": "verifying the tag" }
@@ -226,27 +244,27 @@ only machine information that crosses the wire.
 
 Both fields are optional. A `display_name` collision is `name_taken`.
 
-### `DELETE /v1/channels/{channel_id}/participants/me` — participant credential
+### `DELETE /v1/channels/{channel_id}/parties/me` — party credential
 
-Leaves the channel (204). The participant token is invalidated, the display name is
+Leaves the channel (204). The party token is invalidated, the display name is
 released, and any unacknowledged messages in that inbox are discarded.
 
-### `DELETE /v1/channels/{channel_id}` — participant credential
+### `DELETE /v1/channels/{channel_id}` — party credential
 
 Destroys the channel immediately (204): every stream is closed with `4404`, every
-participant token and pending invite is invalidated, and every queued message is
+party token and pending invite is invalidated, and every queued message is
 discarded. Subsequent requests carrying a credential for it answer `gone` (410).
 
-Any participant can do this, and that is the point. The invitation is the trust
-boundary; when it turns out to have been misplaced — a leaked invite, a participant
+Any party can do this, and that is the point. The invitation is the trust
+boundary; when it turns out to have been misplaced — a leaked invite, a party
 that should not be there — the remedy is to burn the channel and re-form it with fresh
 invites. A destroyed channel is the worst an insider can do to you, and it costs one
 join each to recover. This replaces an administrator: there is nobody to appeal to, and
 nothing an outsider can do to trigger it.
 
-**Lifecycle.** A participant that has not contacted the relay for `participant_ttl`
+**Lifecycle.** A party that has not contacted the relay for `party_ttl`
 (900 seconds RECOMMENDED) is dropped as if it had left. Sessions restart; the timeout is
-long enough to survive that. A channel with zero participants is destroyed after
+long enough to survive that. A channel with zero parties is destroyed after
 `channel_grace` (300 seconds RECOMMENDED), after which its identifier and every token
 scoped to it are `gone` (410).
 
@@ -254,15 +272,15 @@ scoped to it are `gone` (410).
 
 ## 5. Sending
 
-### `POST /v1/channels/{channel_id}/messages` — participant credential
+### `POST /v1/channels/{channel_id}/messages` — party credential
 
 ```json
 { "to": "p_Ka81mz", "body": "tag pushed, gate is green", "reply_to": "…" }
 ```
 
-`to` is REQUIRED and is a `participant_id`. There is no broadcast and no wildcard: a
+`to` is REQUIRED and is a `party_id`. There is no broadcast and no wildcard: a
 missing `to` is `invalid_request`. A client that wants to tell everyone iterates the
-participant list and sends N messages, which keeps the "one message wakes one session"
+party list and sends N messages, which keeps the "one message wakes one session"
 property intact.
 
 `body` is UTF-8 text. Relays MUST accept at least 16 KiB and MUST publish their limit in
@@ -274,7 +292,7 @@ relay does not interpret it.
   "message_id": "x_9Fh2",
   "seq": 42,
   "recipient": {
-    "participant_id": "p_Ka81mz",
+    "party_id": "p_Ka81mz",
     "display_name": "release-a",
     "online": false,
     "last_seen_at": "2026-09-01T12:44:10.000Z"
@@ -287,7 +305,7 @@ as the recipient having read it.
 
 The `recipient` block is REQUIRED, and the reason is worth stating. "Queued" alone hides
 the most common failure: a mistyped `to` that happens to hit a real but dormant
-participant returns success and is never read by anyone. Returning who received it and
+party returns success and is never read by anyone. Returning who received it and
 whether they are connected puts that in front of the sender at send time.
 
 Delivery is **at-least-once**. Nothing in this protocol guarantees that a message
@@ -298,7 +316,7 @@ certainty ask for a reply.
 
 ## 6. Receiving
 
-Each participant has one inbox. `seq` is assigned at enqueue time and is strictly
+Each party has one inbox. `seq` is assigned at enqueue time and is strictly
 increasing per inbox, starting at 1. Gaps MAY occur (expiry, a leave); clients MUST NOT
 infer loss from a gap.
 
@@ -315,7 +333,7 @@ tolerate duplicates — deduplicating on `seq` is sufficient.
   "channel_id": "c_4nRt9v",
   "seq": 42,
   "from": {
-    "participant_id": "p_Bd30nq",
+    "party_id": "p_Bd30nq",
     "display_name": "workshop-main",
     "machine_label": "workshop"
   },
@@ -331,7 +349,7 @@ tolerate duplicates — deduplicating on `seq` is sufficient.
 ```
 GET /v1/channels/{channel_id}/stream
 Upgrade: websocket
-Authorization: Bearer <participant token>
+Authorization: Bearer <party token>
 ```
 
 The credential MUST be accepted in the `Authorization` header. Relays MAY accept a
@@ -342,10 +360,10 @@ Frames are JSON text.
 
 | Direction | Frame |
 | --- | --- |
-| → client | `{"type":"ready","participant_id":"p_…","last_seq":41,"participants":[…]}` |
+| → client | `{"type":"ready","party_id":"p_…","last_seq":41,"parties":[…]}` |
 | → client | `{"type":"message","message":{…envelope…}}` |
 | ← client | `{"type":"ack","seq":42}` |
-| → client | `{"type":"presence","event":"joined"\|"left"\|"updated","participant":{…}}` |
+| → client | `{"type":"presence","event":"joined"\|"left"\|"updated","party":{…}}` |
 | → client | `{"type":"ping"}` / ← client `{"type":"pong"}` |
 | → client | `{"type":"error","error":"…","message":"…"}` |
 
@@ -354,7 +372,7 @@ live traffic. The relay MUST send a `ping` at least every 30 seconds; a client t
 not answer within 30 seconds is treated as disconnected. Application-level pings are
 specified because WebSocket control frames are not exposed by every runtime.
 
-A participant has at most one stream. Opening a second one MUST supersede the first,
+A party has at most one stream. Opening a second one MUST supersede the first,
 closing it with code `4409` — split delivery across two connections would let each side
 acknowledge messages the other never saw.
 
@@ -368,7 +386,7 @@ with nothing but `curl`, and what lets clients run where WebSocket is not availa
 
 ```
 GET /v1/channels/{channel_id}/inbox?wait=30&after_seq=41&limit=16
-Authorization: Bearer <participant token>
+Authorization: Bearer <party token>
 ```
 
 Returns immediately if anything is pending, otherwise holds the request for up to `wait`
@@ -395,8 +413,8 @@ a no-op. WebSocket clients MAY use this endpoint instead of the `ack` frame.
 **When to acknowledge is a client decision with consequences.** See §7.
 
 Contact through either transport — an open stream, a poll, or an ack — updates
-`last_seen_at` and keeps the participant alive. There is no separate heartbeat: a
-participant that is not listening is, correctly, not present.
+`last_seen_at` and keeps the party alive. There is no separate heartbeat: a
+party that is not listening is, correctly, not present.
 
 Undelivered messages expire after `message_ttl` (86400 seconds RECOMMENDED). Inboxes are
 bounded (256 messages RECOMMENDED); sending to a full inbox is `inbox_full` (409).
@@ -429,8 +447,8 @@ lives, so a client that skips them is not a conforming Partyline client.
    restrictive permissions, not process arguments visible to every process on the
    machine.
 7. Clients SHOULD prefer a local mechanism when both sessions are on the same machine.
-   A relay is for crossing machines; routing local traffic through one sends it out to a
-   third party for no benefit.
+   A relay is for crossing machines; routing local traffic through one sends it off the
+   machine for no benefit.
 
 ---
 
@@ -441,21 +459,21 @@ A conforming relay:
 - MUST serve every endpoint in §4–§6 and `GET /v1/relay`, over TLS.
 - MUST NOT retain message bodies after acknowledgement, expiry, or channel destruction,
   and MUST NOT expose any interface that returns messages to anyone but their recipient.
-- MUST NOT confirm the existence of a channel to a non-participant. An unknown channel,
-  an invalid participant token, and an invalid invite all return `not_found` — anything
+- MUST NOT confirm the existence of a channel to anyone who is not a party to it. An unknown channel,
+  an invalid party token, and an invalid invite all return `not_found` — anything
   else turns error codes into an existence oracle. (A destroyed channel answers `gone`
   to requests carrying a credential; identifiers are unguessable, and a stale client
   deserves the honest answer.)
-- MUST scope participant tokens to one channel and reject cross-channel use.
+- MUST scope party tokens to one channel and reject cross-channel use.
 - MUST rate-limit channel creation and join attempts per source, and invite creation
-  and sending per participant. In an open relay these limits are the only brake on
+  and sending per party. In an open relay these limits are the only brake on
   abuse; they are not optional hardening.
 - SHOULD publish its limits and retention in `GET /v1/relay`, and document them for the
   people who connect to it.
 
 **Operation is deployment.** The protocol defines no administrative interface: nothing
-to list channels, nothing to evict users, no privileged credential to protect (§10).
-The in-band remedies — invites expire, participants time out, any participant can
+to list channels, nothing to evict parties, no privileged credential to protect (§10).
+The in-band remedies — invites expire, parties time out, any party can
 destroy a channel, empty channels evaporate — are the whole of channel management. An
 operator who wants a closed relay puts access control in front of it (a reverse proxy,
 an access layer); that is an operational choice outside this protocol.
@@ -465,11 +483,11 @@ Configurable parameters and their recommended defaults:
 | Parameter | Default | Effect |
 | --- | --- | --- |
 | `invite_ttl` | 3600 s | Default invite lifetime |
-| `participant_ttl` | 900 s | Silence before a participant is dropped |
+| `party_ttl` | 900 s | Silence before a party is dropped |
 | `channel_grace` | 300 s | Empty channel lifetime before destruction |
 | `message_ttl` | 86400 s | Undelivered message lifetime |
 | `body_bytes` | 65536 | Maximum message body |
-| `inbox_messages` | 256 | Maximum queued messages per participant |
+| `inbox_messages` | 256 | Maximum queued messages per party |
 
 ---
 
@@ -477,7 +495,7 @@ Configurable parameters and their recommended defaults:
 
 **The relay operator sees everything and can inject anything.** Bodies are plaintext to
 the relay, and a hostile or compromised relay can deliver messages that appear to come
-from any participant. Since those messages become input to a coding session, this is not
+from any party. Since those messages become input to a coding session, this is not
 an eavesdropping risk but a control risk. Choosing the relay is the primary defense; the
 protocol has no way to make an untrusted relay safe.
 
@@ -491,12 +509,12 @@ make outbound traffic visible so an injected send is at least seen.
 learns it can create channels and consume resources on an open relay — bounded by the
 mandatory rate limits — but can discover no channel, join none without an invite, and
 reach no session. Access to *conversations* rests entirely on the capability chain:
-unguessable channel identifiers, hand-delivered invites, session-held participant
+unguessable channel identifiers, hand-delivered invites, session-held party
 tokens. Operators for whom resource use by strangers is unacceptable put an access
 layer in front of the relay (§8).
 
 **The invitation is the trust boundary, and it is load-bearing.** Inviting a session
-means trusting it with everything a participant can do — including destroying the
+means trusting it with everything a party can do — including destroying the
 channel (§4). That is deliberate: the destructive power of an insider is capped at one
 burned channel, which is also exactly the remedy you need when an insider turns out not
 to deserve the trust. What the protocol will not do is let anyone *outside* the
@@ -507,7 +525,7 @@ that share a key can encrypt it themselves, but nothing in the protocol supports
 exchange and the relay still controls delivery and can forge senders. Encryption would
 address confidentiality, not injection.
 
-**Token handling.** Invite and participant tokens are bearer tokens. Relays SHOULD
+**Token handling.** Invite and party tokens are bearer tokens. Relays SHOULD
 store them hashed, MUST transmit them only over TLS, and MUST NOT log them. Clients
 MUST keep them out of command lines and process arguments.
 
@@ -526,12 +544,12 @@ Not oversights — each is excluded for a reason, and adding it changes the mode
   management; what they cannot do — say, surveil channels — is exactly what an
   admin-less relay is structurally unable to do, which is a feature.
 - **Broadcast.** The only way one message could wake several sessions. Clients can loop
-  over the participant list; the relay needs nothing for it.
+  over the party list; the relay needs nothing for it.
 - **Message history.** The relay is a post office. Conversations are already recorded in
   the sessions that had them, and a relay that stores nothing is a relay that cannot
   leak what was said.
 - **Public channels and channel discovery.** See §9.
-- **Channel ownership and moderation.** Participants are equal; the boundary is the
+- **Channel ownership and moderation.** Parties are equal; the boundary is the
   invitation, not a role.
 - **Presence beyond participation.** `online` and `last_seen_at` are for choosing a
   recipient, not a status system.

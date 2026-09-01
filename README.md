@@ -41,7 +41,7 @@ The model is small on purpose:
   access boundary — the set of sessions allowed to call each other. There
   is no history: the relay holds a message only until the recipient takes
   it, and never stores what was said.
-- **Participants are sessions**, not machines or people. Joining is
+- **Parties are sessions**, not machines or people. Joining is
   something a session does explicitly. Starting a client process joins
   nothing.
 - **Every message is addressed.** There is no broadcast, so one message
@@ -50,7 +50,7 @@ The model is small on purpose:
   already inside.
 
 Access is a capability chain, not an account system: unguessable channel
-identifiers, hand-delivered invites, and per-channel participant tokens.
+identifiers, hand-delivered invites, and per-channel party tokens.
 The relay itself has no accounts and no administrator — operating one is
 just deploying it, and knowing its URL grants access to no channel.
 

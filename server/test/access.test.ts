@@ -55,22 +55,22 @@ describe("open channel creation", () => {
   });
 });
 
-describe("participant-initiated destruction (SPEC.md §4)", () => {
-  it("lets any participant destroy the channel; everything after is gone", async () => {
+describe("party-initiated destruction (SPEC.md §4)", () => {
+  it("lets any party destroy the channel; everything after is gone", async () => {
     const setup = await createChannel("burn-me");
     const a = await join(setup.channel_id, setup.invite.token, "alpha");
     const res = await api(`/v1/channels/${setup.channel_id}`, {
       method: "DELETE",
-      headers: { Authorization: `Bearer ${a.participant_token}` },
+      headers: { Authorization: `Bearer ${a.party_token}` },
     });
     expect(res.status).toBe(204);
-    const after = await api(`/v1/channels/${setup.channel_id}/participants`, {
-      headers: { Authorization: `Bearer ${a.participant_token}` },
+    const after = await api(`/v1/channels/${setup.channel_id}/parties`, {
+      headers: { Authorization: `Bearer ${a.party_token}` },
     });
     expect(after.status).toBe(410);
   });
 
-  it("is not available to non-participants — and does not confirm existence", async () => {
+  it("is not available to non-parties — and does not confirm existence", async () => {
     const setup = await createChannel();
     await join(setup.channel_id, setup.invite.token, "alpha");
     const wrongToken = await api(`/v1/channels/${setup.channel_id}`, {

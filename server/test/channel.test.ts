@@ -1,8 +1,8 @@
-// SPEC.md §4 — creation, invites, join, names, participant list, leave — and
+// SPEC.md §4 — creation, invites, join, names, party list, leave — and
 // §8's existence hiding.
 
 import { describe, expect, it } from "vitest";
-import type { ParticipantView } from "../src/protocol.ts";
+import type { PartyView } from "../src/protocol.ts";
 import { api, bearer, createChannel, join, post, twoParty } from "./helpers.ts";
 
 describe("channel creation and join", () => {
@@ -10,10 +10,10 @@ describe("channel creation and join", () => {
     const setup = await createChannel("release-work");
     expect(setup.channel_id).toMatch(/^c_/);
     expect(setup.invite.uses_remaining).toBe(1);
-    // no participants yet — the creator joins like anyone else
+    // no parties yet — the creator joins like anyone else
     const joined = await join(setup.channel_id, setup.invite.token, "creator");
-    expect(joined.participant_id).toMatch(/^p_/);
-    expect(joined.participant_token).toMatch(/^pt_/);
+    expect(joined.party_id).toMatch(/^p_/);
+    expect(joined.party_token).toMatch(/^pt_/);
   });
 
   it("requires display_name and machine_label", async () => {
@@ -38,7 +38,7 @@ describe("channel creation and join", () => {
 
   it("rejects duplicate display names with 409, never a silent rename", async () => {
     const { channelId, a } = await twoParty();
-    const invite = await post(`/v1/channels/${channelId}/invites`, {}, bearer(a.participant_token));
+    const invite = await post(`/v1/channels/${channelId}/invites`, {}, bearer(a.party_token));
     const token = ((await invite.json()) as { invite: { token: string } }).invite.token;
     const res = await post(
       `/v1/channels/${channelId}/join`,
@@ -54,7 +54,7 @@ describe("channel creation and join", () => {
     const res = await post(
       `/v1/channels/${channelId}/invites`,
       { ttl_seconds: 999999, max_uses: 999 },
-      bearer(a.participant_token),
+      bearer(a.party_token),
     );
     expect(res.status).toBe(201);
     const { invite } = (await res.json()) as {
@@ -65,20 +65,20 @@ describe("channel creation and join", () => {
   });
 });
 
-describe("participants", () => {
-  it("lists participants with machine label, about, and presence — nothing machine-local", async () => {
+describe("parties", () => {
+  it("lists parties with machine label, about, and presence — nothing machine-local", async () => {
     const { channelId, a } = await twoParty();
-    const res = await api(`/v1/channels/${channelId}/participants`, {
-      headers: bearer(a.participant_token),
+    const res = await api(`/v1/channels/${channelId}/parties`, {
+      headers: bearer(a.party_token),
     });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { you: string; participants: ParticipantView[] };
-    expect(body.you).toBe(a.participant_id);
-    expect(body.participants).toHaveLength(2);
-    const alpha = body.participants.find((p) => p.display_name === "alpha");
+    const body = (await res.json()) as { you: string; parties: PartyView[] };
+    expect(body.you).toBe(a.party_id);
+    expect(body.parties).toHaveLength(2);
+    const alpha = body.parties.find((p) => p.display_name === "alpha");
     expect(alpha?.machine_label).toBe("machine-a");
     expect(alpha?.online).toBe(true);
-    for (const p of body.participants) {
+    for (const p of body.parties) {
       expect(Object.keys(p).sort()).toEqual(
         [
           "about",
@@ -87,7 +87,7 @@ describe("participants", () => {
           "last_seen_at",
           "machine_label",
           "online",
-          "participant_id",
+          "party_id",
         ].filter((k) => k !== "about" || p.about !== undefined),
       );
     }
@@ -95,36 +95,36 @@ describe("participants", () => {
 
   it("renames via PATCH me and rejects collisions", async () => {
     const { channelId, a } = await twoParty();
-    const ok = await api(`/v1/channels/${channelId}/participants/me`, {
+    const ok = await api(`/v1/channels/${channelId}/parties/me`, {
       method: "PATCH",
       body: JSON.stringify({ display_name: "alpha2", about: "renamed" }),
-      headers: bearer(a.participant_token),
+      headers: bearer(a.party_token),
     });
     expect(ok.status).toBe(200);
-    const collision = await api(`/v1/channels/${channelId}/participants/me`, {
+    const collision = await api(`/v1/channels/${channelId}/parties/me`, {
       method: "PATCH",
       body: JSON.stringify({ display_name: "beta" }),
-      headers: bearer(a.participant_token),
+      headers: bearer(a.party_token),
     });
     expect(collision.status).toBe(409);
   });
 
   it("leave releases the name and invalidates the token", async () => {
     const { channelId, a, b } = await twoParty();
-    const res = await api(`/v1/channels/${channelId}/participants/me`, {
+    const res = await api(`/v1/channels/${channelId}/parties/me`, {
       method: "DELETE",
-      headers: bearer(a.participant_token),
+      headers: bearer(a.party_token),
     });
     expect(res.status).toBe(204);
-    const after = await api(`/v1/channels/${channelId}/participants`, {
-      headers: bearer(a.participant_token),
+    const after = await api(`/v1/channels/${channelId}/parties`, {
+      headers: bearer(a.party_token),
     });
     expect(after.status).toBe(404); // token is dead, and existence is hidden (§8)
     // the released name is usable again
-    const invite = await post(`/v1/channels/${channelId}/invites`, {}, bearer(b.participant_token));
+    const invite = await post(`/v1/channels/${channelId}/invites`, {}, bearer(b.party_token));
     const token = ((await invite.json()) as { invite: { token: string } }).invite.token;
     const rejoin = await join(channelId, token, "alpha");
-    expect(rejoin.participant_id).not.toBe(a.participant_id);
+    expect(rejoin.party_id).not.toBe(a.party_id);
   });
 });
 
@@ -132,8 +132,8 @@ describe("existence hiding (SPEC.md §8)", () => {
   it("answers unknown channels and wrong tokens identically", async () => {
     const { channelId } = await twoParty();
     const headers = bearer("pt_definitely-wrong");
-    const unknown = await api("/v1/channels/c_doesnotexist/participants", { headers });
-    const known = await api(`/v1/channels/${channelId}/participants`, { headers });
+    const unknown = await api("/v1/channels/c_doesnotexist/parties", { headers });
+    const known = await api(`/v1/channels/${channelId}/parties`, { headers });
     expect(unknown.status).toBe(404);
     expect(known.status).toBe(unknown.status);
     expect(await known.text()).toBe(await unknown.text());

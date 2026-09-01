@@ -29,8 +29,8 @@ export async function createChannel(name = "test-channel"): Promise<ChannelSetup
 }
 
 export interface Joined {
-  participant_id: string;
-  participant_token: string;
+  party_id: string;
+  party_token: string;
 }
 
 export async function join(
@@ -49,23 +49,23 @@ export async function join(
   return (await res.json()) as Joined;
 }
 
-/** Channel + two joined participants — the standard fixture. */
+/** Channel + two joined parties — the standard fixture. */
 export async function twoParty() {
   const setup = await createChannel();
   const a = await join(setup.channel_id, setup.invite.token, "alpha", "machine-a");
   const inviteRes = await post(
     `/v1/channels/${setup.channel_id}/invites`,
     {},
-    bearer(a.participant_token),
+    bearer(a.party_token),
   );
   const invite = ((await inviteRes.json()) as { invite: { token: string } }).invite;
   const b = await join(setup.channel_id, invite.token, "beta", "machine-b");
   return { channelId: setup.channel_id, a, b };
 }
 
-export async function openStream(channelId: string, participantToken: string) {
+export async function openStream(channelId: string, partyToken: string) {
   const res = await api(`/v1/channels/${channelId}/stream`, {
-    headers: { Upgrade: "websocket", ...bearer(participantToken) },
+    headers: { Upgrade: "websocket", ...bearer(partyToken) },
   });
   if (res.status !== 101 || !res.webSocket) {
     throw new Error(`stream failed: ${res.status}`);

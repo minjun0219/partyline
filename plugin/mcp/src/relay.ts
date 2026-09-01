@@ -1,7 +1,7 @@
 // HTTP client for a Partyline relay. Every call takes the relay origin from
 // configuration — there is no default and no fallback (SPEC.md §7.1).
 
-import type { ErrorBody, ParticipantView, RecipientView } from "./types.ts";
+import type { ErrorBody, PartyView, RecipientView } from "./types.ts";
 
 export class RelayError extends Error {
   constructor(
@@ -55,10 +55,10 @@ export async function joinChannel(
   machineLabel: string,
   about?: string,
 ): Promise<{
-  participant_id: string;
-  participant_token: string;
+  party_id: string;
+  party_token: string;
   channel: { channel_id: string; name: string };
-  participants: ParticipantView[];
+  parties: PartyView[];
 }> {
   return request(relayUrl, `/v1/channels/${channelId}/join`, {
     method: "POST",
@@ -75,36 +75,36 @@ export async function joinChannel(
 export async function mintInvite(
   relayUrl: string,
   channelId: string,
-  participantToken: string,
+  partyToken: string,
   ttlSeconds?: number,
   maxUses?: number,
 ): Promise<{ invite: InviteInfo }> {
   return request(relayUrl, `/v1/channels/${channelId}/invites`, {
     method: "POST",
-    headers: bearer(participantToken),
+    headers: bearer(partyToken),
     body: JSON.stringify({ ttl_seconds: ttlSeconds, max_uses: maxUses }),
   });
 }
 
-export async function listParticipants(
+export async function listParties(
   relayUrl: string,
   channelId: string,
-  participantToken: string,
-): Promise<{ you: string; participants: ParticipantView[] }> {
-  return request(relayUrl, `/v1/channels/${channelId}/participants`, {
-    headers: bearer(participantToken),
+  partyToken: string,
+): Promise<{ you: string; parties: PartyView[] }> {
+  return request(relayUrl, `/v1/channels/${channelId}/parties`, {
+    headers: bearer(partyToken),
   });
 }
 
 export async function updateMe(
   relayUrl: string,
   channelId: string,
-  participantToken: string,
+  partyToken: string,
   patch: { display_name?: string; about?: string },
-): Promise<{ participant: ParticipantView }> {
-  return request(relayUrl, `/v1/channels/${channelId}/participants/me`, {
+): Promise<{ party: PartyView }> {
+  return request(relayUrl, `/v1/channels/${channelId}/parties/me`, {
     method: "PATCH",
-    headers: bearer(participantToken),
+    headers: bearer(partyToken),
     body: JSON.stringify(patch),
   });
 }
@@ -112,51 +112,51 @@ export async function updateMe(
 export async function leaveChannel(
   relayUrl: string,
   channelId: string,
-  participantToken: string,
+  partyToken: string,
 ): Promise<void> {
-  await request(relayUrl, `/v1/channels/${channelId}/participants/me`, {
+  await request(relayUrl, `/v1/channels/${channelId}/parties/me`, {
     method: "DELETE",
-    headers: bearer(participantToken),
+    headers: bearer(partyToken),
   });
 }
 
 export async function sendMessage(
   relayUrl: string,
   channelId: string,
-  participantToken: string,
+  partyToken: string,
   to: string,
   body: string,
   replyTo?: string,
 ): Promise<{ message_id: string; seq: number; recipient: RecipientView }> {
   return request(relayUrl, `/v1/channels/${channelId}/messages`, {
     method: "POST",
-    headers: bearer(participantToken),
+    headers: bearer(partyToken),
     body: JSON.stringify({ to, body, reply_to: replyTo }),
   });
 }
 
-/** SPEC.md §4: any participant may destroy the channel — the remedy for a
+/** SPEC.md §4: any party may destroy the channel — the remedy for a
  * leaked invite or misplaced trust. Irreversible. */
 export async function destroyChannel(
   relayUrl: string,
   channelId: string,
-  participantToken: string,
+  partyToken: string,
 ): Promise<void> {
   await request(relayUrl, `/v1/channels/${channelId}`, {
     method: "DELETE",
-    headers: bearer(participantToken),
+    headers: bearer(partyToken),
   });
 }
 
 export async function ackInbox(
   relayUrl: string,
   channelId: string,
-  participantToken: string,
+  partyToken: string,
   seq: number,
 ): Promise<void> {
   await request(relayUrl, `/v1/channels/${channelId}/inbox/ack`, {
     method: "POST",
-    headers: bearer(participantToken),
+    headers: bearer(partyToken),
     body: JSON.stringify({ seq }),
   });
 }

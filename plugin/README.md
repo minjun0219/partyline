@@ -4,7 +4,7 @@
 
 > Korean: [README.ko.md](./README.ko.md)
 
-Bundles an MCP server that lets a session become a participant on a
+Bundles an MCP server that lets a session become a party on a
 Partyline relay: join channels, see who is reachable, send addressed
 messages, and receive — incoming messages are injected into the session
 and acknowledged to the relay only after they have actually landed.
@@ -45,7 +45,7 @@ partyline_join { channel_id, invite_token, display_name: "laptop-main" }
 ```
 
 Hand the other machine the relay URL and an invite (`partyline_invite`)
-out of band; it joins the same way. From there: `partyline_peers`,
+out of band; it joins the same way. From there: `partyline_parties`,
 `partyline_send`, `partyline_leave` — and `partyline_destroy` to burn a
 channel whose invite leaked. A restarted session resumes its seat with
 `partyline_join { channel_id }` — still an explicit call; nothing ever
@@ -77,5 +77,5 @@ pnpm test          # unit + bundle smoke + e2e against the reference relay
 
 The e2e test spawns the reference relay from `../server` under wrangler
 and runs the full story against it: open channel creation → two
-participants by invitation → stream delivery → reconnect without
-duplicates → participant destruction.
+parties by invitation → stream delivery → reconnect without
+duplicates → party destruction.

@@ -1,8 +1,8 @@
-// One Durable Object per channel: participants, invites, inboxes, and the two
+// One Durable Object per channel: parties, invites, inboxes, and the two
 // receive transports (WebSocket stream, long poll). The design constraints
 // come straight from SPEC.md — no history (rows exist only until acked), no
 // broadcast (delivery is always to one inbox), and destruction when the last
-// participant is gone.
+// party is gone.
 
 import { DurableObject } from "cloudflare:workers";
 import { randomId, randomToken, sha256Hex } from "./crypto.ts";
@@ -15,7 +15,7 @@ import {
   isoTime,
   LIMITS,
   type MessageEnvelope,
-  type ParticipantView,
+  type PartyView,
   PRESENCE_GRACE_MS,
   type RecipientView,
   type ServerFrame,
@@ -23,16 +23,16 @@ import {
 } from "./protocol.ts";
 
 const MESSAGE_TTL_MS = LIMITS.message_ttl_seconds * 1000;
-const PARTICIPANT_TTL_MS = LIMITS.participant_ttl_seconds * 1000;
+const PARTY_TTL_MS = LIMITS.party_ttl_seconds * 1000;
 const ALARM_INTERVAL_MS = 30 * 1000;
 /** Two missed ping rounds before a silent socket is dropped. */
 const PONG_DEADLINE_MS = 75 * 1000;
 
-/** In-memory per-participant fixed-window rate limits (reference-grade). */
+/** In-memory per-party fixed-window rate limits (reference-grade). */
 const SEND_RATE_PER_MINUTE = 120;
 const INVITE_RATE_PER_MINUTE = 30;
 
-interface ParticipantRow {
+interface PartyRow {
   id: string;
   display_name: string;
   machine_label: string;
@@ -43,7 +43,7 @@ interface ParticipantRow {
 }
 
 interface PendingPoll {
-  participantId: string;
+  partyId: string;
   afterSeq: number;
   limit: number;
   resolve: (result: PollResult) => void;
@@ -60,14 +60,14 @@ export type CreateResult = { ok: true; invite: InviteInfo } | Fail;
 export type JoinResult =
   | {
       ok: true;
-      participant_id: string;
-      participant_token: string;
+      party_id: string;
+      party_token: string;
       channel: { channel_id: string; name: string };
-      participants: ParticipantView[];
+      parties: PartyView[];
     }
   | Fail;
-export type ParticipantsResult = { ok: true; you: string; participants: ParticipantView[] } | Fail;
-export type UpdateResult = { ok: true; participant: ParticipantView } | Fail;
+export type PartiesResult = { ok: true; you: string; parties: PartyView[] } | Fail;
+export type UpdateResult = { ok: true; party: PartyView } | Fail;
 export type InviteResult = { ok: true; invite: InviteInfo } | Fail;
 export type SendResult =
   | { ok: true; message_id: string; seq: number; recipient: RecipientView }
@@ -90,7 +90,7 @@ export class ChannelDO extends DurableObject<Record<string, never>> {
         key   TEXT PRIMARY KEY,
         value TEXT NOT NULL
       );
-      CREATE TABLE IF NOT EXISTS participants (
+      CREATE TABLE IF NOT EXISTS parties (
         id            TEXT PRIMARY KEY,
         display_name  TEXT NOT NULL UNIQUE,
         machine_label TEXT NOT NULL,
@@ -159,9 +159,9 @@ export class ChannelDO extends DurableObject<Record<string, never>> {
   }
 
   /**
-   * SPEC.md §8: a wrong or expired participant token on a live channel gets
+   * SPEC.md §8: a wrong or expired party token on a live channel gets
    * the same answer as an unknown channel — existence is never confirmed to
-   * a non-participant.
+   * a non-party.
    */
   private hideExistence(): Fail {
     return fail("not_found", "no such channel");
@@ -194,13 +194,13 @@ export class ChannelDO extends DurableObject<Record<string, never>> {
   }
 
   async mintInvite(
-    participantToken: string,
+    partyToken: string,
     ttlSeconds: number | undefined,
     maxUses: number | undefined,
   ): Promise<InviteResult> {
     const gate = this.gate();
     if (gate) return gate;
-    const me = await this.auth(participantToken);
+    const me = await this.auth(partyToken);
     if (!me) return this.hideExistence();
     if (!this.admitRate(`invite:${me.id}`, INVITE_RATE_PER_MINUTE)) {
       return fail("rate_limited", "too many invites");
@@ -233,17 +233,17 @@ export class ChannelDO extends DurableObject<Record<string, never>> {
     if (!invite) return this.hideExistence(); // a bad invite must not confirm the channel exists (§8)
 
     const taken = this.sql
-      .exec("SELECT id FROM participants WHERE display_name = ?", displayName)
+      .exec("SELECT id FROM parties WHERE display_name = ?", displayName)
       .toArray()[0];
     if (taken) return fail("name_taken", "display name is in use in this channel");
 
-    const participantId = randomId("p_");
+    const partyId = randomId("p_");
     const token = randomToken("pt_");
     this.sql.exec(
-      `INSERT INTO participants
+      `INSERT INTO parties
          (id, display_name, machine_label, about, token_hash, joined_at, last_seen_at)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      participantId,
+      partyId,
       displayName,
       machineLabel,
       about ?? null,
@@ -261,41 +261,41 @@ export class ChannelDO extends DurableObject<Record<string, never>> {
     }
     this.metaDelete("empty_since");
 
-    const joined = this.participantById(participantId);
+    const joined = this.partyById(partyId);
     if (joined) this.broadcastPresence("joined", joined);
     return {
       ok: true,
-      participant_id: participantId,
-      participant_token: token,
+      party_id: partyId,
+      party_token: token,
       channel: { channel_id: this.metaGet("id") ?? "", name: this.metaGet("name") ?? "" },
-      participants: this.allViews(),
+      parties: this.allViews(),
     };
   }
 
-  // ---- participant auth and views -----------------------------------------
+  // ---- party auth and views -----------------------------------------
 
-  private async auth(token: string): Promise<ParticipantRow | null> {
+  private async auth(token: string): Promise<PartyRow | null> {
     const hash = await sha256Hex(token);
-    const row = this.sql.exec("SELECT * FROM participants WHERE token_hash = ?", hash).toArray()[0];
+    const row = this.sql.exec("SELECT * FROM parties WHERE token_hash = ?", hash).toArray()[0];
     if (!row) return null;
     const now = Date.now();
-    this.sql.exec("UPDATE participants SET last_seen_at = ? WHERE id = ?", now, row.id);
-    return { ...(row as unknown as ParticipantRow), last_seen_at: now };
+    this.sql.exec("UPDATE parties SET last_seen_at = ? WHERE id = ?", now, row.id);
+    return { ...(row as unknown as PartyRow), last_seen_at: now };
   }
 
-  private participantById(id: string): ParticipantRow | null {
-    const row = this.sql.exec("SELECT * FROM participants WHERE id = ?", id).toArray()[0];
-    return row ? (row as unknown as ParticipantRow) : null;
+  private partyById(id: string): PartyRow | null {
+    const row = this.sql.exec("SELECT * FROM parties WHERE id = ?", id).toArray()[0];
+    return row ? (row as unknown as PartyRow) : null;
   }
 
-  private isOnline(row: ParticipantRow): boolean {
+  private isOnline(row: PartyRow): boolean {
     if (this.ctx.getWebSockets(row.id).length > 0) return true;
     return Date.now() - row.last_seen_at <= PRESENCE_GRACE_MS;
   }
 
-  private view(row: ParticipantRow): ParticipantView {
+  private view(row: PartyRow): PartyView {
     return {
-      participant_id: row.id,
+      party_id: row.id,
       display_name: row.display_name,
       machine_label: row.machine_label,
       ...(row.about !== null ? { about: row.about } : {}),
@@ -305,19 +305,19 @@ export class ChannelDO extends DurableObject<Record<string, never>> {
     };
   }
 
-  private allViews(): ParticipantView[] {
+  private allViews(): PartyView[] {
     return this.sql
-      .exec("SELECT * FROM participants ORDER BY joined_at")
+      .exec("SELECT * FROM parties ORDER BY joined_at")
       .toArray()
-      .map((r) => this.view(r as unknown as ParticipantRow));
+      .map((r) => this.view(r as unknown as PartyRow));
   }
 
-  async listParticipants(token: string): Promise<ParticipantsResult> {
+  async listParties(token: string): Promise<PartiesResult> {
     const gate = this.gate();
     if (gate) return gate;
     const me = await this.auth(token);
     if (!me) return this.hideExistence();
-    return { ok: true, you: me.id, participants: this.allViews() };
+    return { ok: true, you: me.id, parties: this.allViews() };
   }
 
   async updateMe(
@@ -330,26 +330,22 @@ export class ChannelDO extends DurableObject<Record<string, never>> {
     if (!me) return this.hideExistence();
     if (patch.display_name !== undefined && patch.display_name !== me.display_name) {
       const taken = this.sql
-        .exec("SELECT id FROM participants WHERE display_name = ?", patch.display_name)
+        .exec("SELECT id FROM parties WHERE display_name = ?", patch.display_name)
         .toArray()[0];
       if (taken) return fail("name_taken", "display name is in use in this channel");
-      this.sql.exec(
-        "UPDATE participants SET display_name = ? WHERE id = ?",
-        patch.display_name,
-        me.id,
-      );
+      this.sql.exec("UPDATE parties SET display_name = ? WHERE id = ?", patch.display_name, me.id);
     }
     if (patch.about !== undefined) {
       this.sql.exec(
-        "UPDATE participants SET about = ? WHERE id = ?",
+        "UPDATE parties SET about = ? WHERE id = ?",
         patch.about === "" ? null : patch.about,
         me.id,
       );
     }
-    const updated = this.participantById(me.id);
-    if (!updated) return fail("internal", "participant vanished");
+    const updated = this.partyById(me.id);
+    if (!updated) return fail("internal", "party vanished");
     this.broadcastPresence("updated", updated);
-    return { ok: true, participant: this.view(updated) };
+    return { ok: true, party: this.view(updated) };
   }
 
   async leave(token: string): Promise<OkResult> {
@@ -357,17 +353,17 @@ export class ChannelDO extends DurableObject<Record<string, never>> {
     if (gate) return gate;
     const me = await this.auth(token);
     if (!me) return this.hideExistence();
-    this.removeParticipant(me.id, 1000, "left the channel");
+    this.removeParty(me.id, 1000, "left the channel");
     return { ok: true };
   }
 
   /**
    * Shared by leave, the staleness sweep, and destruction.
-   * Unacked messages in the inbox are discarded with the participant
+   * Unacked messages in the inbox are discarded with the party
    * (SPEC.md §4) — nobody else may ever read them.
    */
-  private removeParticipant(id: string, closeCode: number, closeReason: string): void {
-    const row = this.participantById(id);
+  private removeParty(id: string, closeCode: number, closeReason: string): void {
+    const row = this.partyById(id);
     if (!row) return;
     for (const ws of this.ctx.getWebSockets(id)) {
       try {
@@ -376,11 +372,11 @@ export class ChannelDO extends DurableObject<Record<string, never>> {
         // already closed
       }
     }
-    this.flushPollsFor(id, fail("gone", "no longer a participant"));
-    this.sql.exec("DELETE FROM participants WHERE id = ?", id);
+    this.flushPollsFor(id, fail("gone", "no longer a party"));
+    this.sql.exec("DELETE FROM parties WHERE id = ?", id);
     this.sql.exec("DELETE FROM inbox WHERE recipient = ?", id);
     this.broadcastPresence("left", row);
-    const remaining = this.sql.exec("SELECT COUNT(*) AS n FROM participants").toArray()[0];
+    const remaining = this.sql.exec("SELECT COUNT(*) AS n FROM parties").toArray()[0];
     if (((remaining?.n as number) ?? 0) === 0 && this.metaGet("empty_since") === null) {
       this.metaSet("empty_since", String(Date.now()));
     }
@@ -401,8 +397,8 @@ export class ChannelDO extends DurableObject<Record<string, never>> {
     if (!this.admitRate(`send:${me.id}`, SEND_RATE_PER_MINUTE)) {
       return fail("rate_limited", "sending too fast");
     }
-    const recipient = this.participantById(to);
-    if (!recipient) return fail("no_such_recipient", "`to` is not a current participant");
+    const recipient = this.partyById(to);
+    if (!recipient) return fail("no_such_recipient", "`to` is not a current party");
     const queued = this.sql
       .exec("SELECT COUNT(*) AS n FROM inbox WHERE recipient = ?", to)
       .toArray()[0];
@@ -413,7 +409,7 @@ export class ChannelDO extends DurableObject<Record<string, never>> {
     const now = Date.now();
     const messageId = randomId("x_");
     const seq = recipient.next_seq;
-    this.sql.exec("UPDATE participants SET next_seq = next_seq + 1 WHERE id = ?", to);
+    this.sql.exec("UPDATE parties SET next_seq = next_seq + 1 WHERE id = ?", to);
     this.sql.exec(
       `INSERT INTO inbox (recipient, seq, message_id, from_id, from_name, from_machine, body, sent_at, reply_to)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -448,12 +444,12 @@ export class ChannelDO extends DurableObject<Record<string, never>> {
   }
 
   private recipientView(id: string): RecipientView {
-    const row = this.participantById(id);
+    const row = this.partyById(id);
     if (!row) {
-      return { participant_id: id, display_name: "", online: false, last_seen_at: isoTime(0) };
+      return { party_id: id, display_name: "", online: false, last_seen_at: isoTime(0) };
     }
     return {
-      participant_id: row.id,
+      party_id: row.id,
       display_name: row.display_name,
       online: this.isOnline(row),
       last_seen_at: isoTime(row.last_seen_at),
@@ -468,7 +464,7 @@ export class ChannelDO extends DurableObject<Record<string, never>> {
       channel_id: this.metaGet("id") ?? "",
       seq: row.seq as number,
       from: {
-        participant_id: row.from_id as string,
+        party_id: row.from_id as string,
         display_name: row.from_name as string,
         machine_label: row.from_machine as string,
       },
@@ -494,9 +490,7 @@ export class ChannelDO extends DurableObject<Record<string, never>> {
   }
 
   private lastSeq(recipient: string): number {
-    const row = this.sql
-      .exec("SELECT next_seq FROM participants WHERE id = ?", recipient)
-      .toArray()[0];
+    const row = this.sql.exec("SELECT next_seq FROM parties WHERE id = ?", recipient).toArray()[0];
     return row ? (row.next_seq as number) - 1 : 0;
   }
 
@@ -520,7 +514,7 @@ export class ChannelDO extends DurableObject<Record<string, never>> {
     const wait = Math.min(waitSeconds, LIMITS.long_poll_max_seconds) * 1000;
     return new Promise<PollResult>((resolve) => {
       const pending: PendingPoll = {
-        participantId: me.id,
+        partyId: me.id,
         afterSeq,
         limit: capped,
         resolve,
@@ -533,11 +527,11 @@ export class ChannelDO extends DurableObject<Record<string, never>> {
     });
   }
 
-  /** Resolve held polls for a participant — with fresh messages, or a failure. */
-  private flushPollsFor(participantId: string, failure: Fail | null): void {
-    const matching = this.pendingPolls.filter((p) => p.participantId === participantId);
+  /** Resolve held polls for a party — with fresh messages, or a failure. */
+  private flushPollsFor(partyId: string, failure: Fail | null): void {
+    const matching = this.pendingPolls.filter((p) => p.partyId === partyId);
     if (matching.length === 0) return;
-    this.pendingPolls = this.pendingPolls.filter((p) => p.participantId !== participantId);
+    this.pendingPolls = this.pendingPolls.filter((p) => p.partyId !== partyId);
     for (const p of matching) {
       clearTimeout(p.timer);
       if (failure) {
@@ -545,8 +539,8 @@ export class ChannelDO extends DurableObject<Record<string, never>> {
       } else {
         p.resolve({
           ok: true,
-          messages: this.readInbox(participantId, p.afterSeq, p.limit),
-          last_seq: this.lastSeq(participantId),
+          messages: this.readInbox(partyId, p.afterSeq, p.limit),
+          last_seq: this.lastSeq(partyId),
         });
       }
     }
@@ -580,7 +574,7 @@ export class ChannelDO extends DurableObject<Record<string, never>> {
     const me = token ? await this.auth(token) : null;
     if (!me) return new Response("not found", { status: 404 }); // §8: do not confirm existence
 
-    // One stream per participant: a second connection supersedes the first
+    // One stream per party: a second connection supersedes the first
     // (SPEC.md §6). Two live streams would each ack past the other.
     for (const existing of this.ctx.getWebSockets(me.id)) {
       try {
@@ -598,9 +592,9 @@ export class ChannelDO extends DurableObject<Record<string, never>> {
 
     this.wsSend(server, {
       type: "ready",
-      participant_id: me.id,
+      party_id: me.id,
       last_seq: this.lastSeq(me.id),
-      participants: this.allViews(),
+      parties: this.allViews(),
     });
     // Backlog first, then live traffic — same at-least-once contract as the
     // long poll: nothing is deleted here, only on ack.
@@ -634,12 +628,8 @@ export class ChannelDO extends DurableObject<Record<string, never>> {
     this.wsSend(ws, { type: "error", error: "invalid_request", message: "unknown frame type" });
   }
 
-  private touch(participantId: string): void {
-    this.sql.exec(
-      "UPDATE participants SET last_seen_at = ? WHERE id = ?",
-      Date.now(),
-      participantId,
-    );
+  private touch(partyId: string): void {
+    this.sql.exec("UPDATE parties SET last_seen_at = ? WHERE id = ?", Date.now(), partyId);
   }
 
   private wsSend(ws: WebSocket, frame: ServerFrame): void {
@@ -650,8 +640,8 @@ export class ChannelDO extends DurableObject<Record<string, never>> {
     }
   }
 
-  private broadcastPresence(event: "joined" | "left" | "updated", row: ParticipantRow): void {
-    const frame: ServerFrame = { type: "presence", event, participant: this.view(row) };
+  private broadcastPresence(event: "joined" | "left" | "updated", row: PartyRow): void {
+    const frame: ServerFrame = { type: "presence", event, party: this.view(row) };
     for (const ws of this.ctx.getWebSockets()) {
       this.wsSend(ws, frame);
     }
@@ -660,12 +650,12 @@ export class ChannelDO extends DurableObject<Record<string, never>> {
   // ---- destruction ---------------------------------------------------------
 
   /**
-   * Any participant may destroy the channel (SPEC.md §4). The invitation is
+   * Any party may destroy the channel (SPEC.md §4). The invitation is
    * the trust boundary; when it was misplaced, burning the channel and
    * re-forming it with fresh invites is the remedy — and nobody outside the
    * invitation chain can trigger this at all.
    */
-  async destroyByParticipant(token: string): Promise<OkResult> {
+  async destroyByParty(token: string): Promise<OkResult> {
     const gate = this.gate();
     if (gate) return gate;
     const me = await this.auth(token);
@@ -689,7 +679,7 @@ export class ChannelDO extends DurableObject<Record<string, never>> {
     }
     this.pendingPolls = [];
     const id = this.metaGet("id");
-    this.sql.exec("DELETE FROM participants");
+    this.sql.exec("DELETE FROM parties");
     this.sql.exec("DELETE FROM inbox");
     this.sql.exec("DELETE FROM invites");
     this.sql.exec("DELETE FROM meta");
@@ -724,15 +714,15 @@ export class ChannelDO extends DurableObject<Record<string, never>> {
     this.sql.exec("DELETE FROM inbox WHERE sent_at < ?", now - MESSAGE_TTL_MS);
     this.sql.exec("DELETE FROM invites WHERE expires_at < ?", now);
 
-    // Drop participants that have gone silent (SPEC.md §4). An open socket
+    // Drop parties that have gone silent (SPEC.md §4). An open socket
     // counts as presence even if no frame has arrived lately.
     const stale = this.sql
-      .exec("SELECT id FROM participants WHERE last_seen_at < ?", now - PARTICIPANT_TTL_MS)
+      .exec("SELECT id FROM parties WHERE last_seen_at < ?", now - PARTY_TTL_MS)
       .toArray();
     for (const row of stale) {
       const id = row.id as string;
       if (this.ctx.getWebSockets(id).length > 0) continue;
-      this.removeParticipant(id, WS_CLOSE.unauthorized, "dropped after inactivity");
+      this.removeParty(id, WS_CLOSE.unauthorized, "dropped after inactivity");
     }
 
     // Ping every socket; drop the ones that stopped answering.

@@ -44,7 +44,7 @@ partyline_join { channel_id, invite_token, display_name: "laptop-main" }
 ```
 
 다른 머신에는 릴레이 URL 과 초대(`partyline_invite`)를 별도 경로로 건네고,
-같은 방식으로 참여시킨다. 이후는 `partyline_peers` · `partyline_send` ·
+같은 방식으로 참여시킨다. 이후는 `partyline_parties` · `partyline_send` ·
 `partyline_leave`, 그리고 초대가 샌 채널을 태우는 `partyline_destroy`.
 재시작한 세션은 `partyline_join { channel_id }` 로 자기 자리를 되찾는다 —
 이것도 명시적 호출이고, 자동으로 참여되는 것은 아무것도 없다.

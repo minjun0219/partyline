@@ -1,6 +1,6 @@
 // End-to-end against the reference relay in this repository: open channel
-// creation → two participants by invitation → send → stream delivery with
-// ack-after-inject → reconnect without duplicate injection → participant
+// creation → two parties by invitation → send → stream delivery with
+// ack-after-inject → reconnect without duplicate injection → party
 // destruction. This is the interop check between
 // the client modules and server/ — the two sides of SPEC.md meeting.
 //
@@ -92,7 +92,7 @@ describe("client against the reference relay", () => {
       "alpha",
       "machine-a",
     );
-    const inviteB = await relay.mintInvite(RELAY, created.channel_id, a.participant_token);
+    const inviteB = await relay.mintInvite(RELAY, created.channel_id, a.party_token);
     const b = await relay.joinChannel(
       RELAY,
       created.channel_id,
@@ -104,8 +104,8 @@ describe("client against the reference relay", () => {
     const seatB: Seat = {
       channel_id: created.channel_id,
       channel_name: "e2e",
-      participant_id: b.participant_id,
-      participant_token: b.participant_token,
+      party_id: b.party_id,
+      party_token: b.party_token,
       display_name: "beta",
       last_injected_seq: 0,
     };
@@ -118,8 +118,8 @@ describe("client against the reference relay", () => {
     const sent = await relay.sendMessage(
       RELAY,
       created.channel_id,
-      a.participant_token,
-      b.participant_id,
+      a.party_token,
+      b.party_id,
       "hello across processes",
     );
     expect(sent.recipient.display_name).toBe("beta");
@@ -135,27 +135,21 @@ describe("client against the reference relay", () => {
     const second = collect(seatB);
     second.connection.start();
     await until(() => second.connection.status === "connected", "reconnect");
-    await relay.sendMessage(
-      RELAY,
-      created.channel_id,
-      a.participant_token,
-      b.participant_id,
-      "second",
-    );
+    await relay.sendMessage(RELAY, created.channel_id, a.party_token, b.party_id, "second");
     await until(() => second.injected.length >= 1, "second delivery");
     expect(second.injected.map((m) => m.body)).toEqual(["second"]);
     second.connection.stop();
 
     // leave cleans up
-    await relay.leaveChannel(RELAY, created.channel_id, b.participant_token);
-    await expect(
-      relay.listParticipants(RELAY, created.channel_id, b.participant_token),
-    ).rejects.toMatchObject({ status: 404 });
+    await relay.leaveChannel(RELAY, created.channel_id, b.party_token);
+    await expect(relay.listParties(RELAY, created.channel_id, b.party_token)).rejects.toMatchObject(
+      { status: 404 },
+    );
 
-    // any remaining participant can burn the channel (SPEC.md §4)
-    await relay.destroyChannel(RELAY, created.channel_id, a.participant_token);
-    await expect(
-      relay.listParticipants(RELAY, created.channel_id, a.participant_token),
-    ).rejects.toMatchObject({ status: 410 });
+    // any remaining party can burn the channel (SPEC.md §4)
+    await relay.destroyChannel(RELAY, created.channel_id, a.party_token);
+    await expect(relay.listParties(RELAY, created.channel_id, a.party_token)).rejects.toMatchObject(
+      { status: 410 },
+    );
   }, 60_000);
 });

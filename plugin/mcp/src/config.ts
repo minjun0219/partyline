@@ -10,22 +10,22 @@ import { join } from "node:path";
 export interface PartylineConfig {
   /** Relay origin, e.g. https://relay.example.com — null means unconfigured. */
   relay_url: string | null;
-  /** Self-declared, shown in participant lists (SPEC.md §4). */
+  /** Self-declared, shown in party lists (SPEC.md §4). */
   machine_label: string;
 }
 
 /**
  * A seat is this machine's standing in one channel. Persisted so that a
- * restarted session can resume the same participant (the relay keeps the
- * participant alive for participant_ttl) instead of needing a fresh invite.
+ * restarted session can resume the same party (the relay keeps the
+ * party alive for party_ttl) instead of needing a fresh invite.
  * Resuming still requires an explicit partyline_join call — persistence does
  * not create auto-join (SPEC.md §7.2).
  */
 export interface Seat {
   channel_id: string;
   channel_name: string;
-  participant_id: string;
-  participant_token: string;
+  party_id: string;
+  party_token: string;
   display_name: string;
   /** Highest seq already injected into a session — the dedupe cursor. */
   last_injected_seq: number;

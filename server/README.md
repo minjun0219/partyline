@@ -5,7 +5,7 @@
 > Korean: [README.ko.md](./README.ko.md)
 
 Implements every normative requirement of [`SPEC.md`](../SPEC.md): the
-capability model (§3), private channels with invites and participant-
+capability model (§3), private channels with invites and party-
 initiated destruction (§4), addressed delivery with the recipient block
 (§5), both receive transports and the ack cursor (§6), and the relay
 requirements (§8). The test suite is organized by spec section and
@@ -15,7 +15,7 @@ doubles as a conformance suite.
 
 - `src/index.ts` — HTTP surface (Hono). Thin: parsing, source rate limits
   for the unauthenticated doors, status mapping.
-- `src/channel.ts` — one Durable Object per channel: participants,
+- `src/channel.ts` — one Durable Object per channel: parties,
   invites, inboxes, WebSocket streams, long polls, the sweep alarm,
   destruction.
 - `src/gate.ts` — one Durable Object per relay: per-source rate limiting

@@ -2,8 +2,8 @@
 // these are duplicated here (not imported from the server) so the plugin
 // directory is self-contained — a git-subdir install ships only plugin/.
 
-export interface ParticipantView {
-  participant_id: string;
+export interface PartyView {
+  party_id: string;
   display_name: string;
   machine_label: string;
   about?: string;
@@ -18,7 +18,7 @@ export interface MessageEnvelope {
   channel_id: string;
   seq: number;
   from: {
-    participant_id: string;
+    party_id: string;
     display_name: string;
     machine_label: string;
   };
@@ -29,16 +29,16 @@ export interface MessageEnvelope {
 }
 
 export interface RecipientView {
-  participant_id: string;
+  party_id: string;
   display_name: string;
   online: boolean;
   last_seen_at: string;
 }
 
 export type ServerFrame =
-  | { type: "ready"; participant_id: string; last_seq: number; participants: ParticipantView[] }
+  | { type: "ready"; party_id: string; last_seq: number; parties: PartyView[] }
   | { type: "message"; message: MessageEnvelope }
-  | { type: "presence"; event: "joined" | "left" | "updated"; participant: ParticipantView }
+  | { type: "presence"; event: "joined" | "left" | "updated"; party: PartyView }
   | { type: "ping" }
   | { type: "error"; error: string; message: string };
 

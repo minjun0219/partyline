@@ -44,8 +44,8 @@ describe("seats", () => {
     const seat = {
       channel_id: "c_1",
       channel_name: "ops",
-      participant_id: "p_1",
-      participant_token: "pt_x",
+      party_id: "p_1",
+      party_token: "pt_x",
       display_name: "alpha",
       last_injected_seq: 0,
     };

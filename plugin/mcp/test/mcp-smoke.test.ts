@@ -71,7 +71,7 @@ describe("bundled MCP server", () => {
       "partyline_invite",
       "partyline_join",
       "partyline_leave",
-      "partyline_peers",
+      "partyline_parties",
       "partyline_send",
       "partyline_status",
       "partyline_update_me",

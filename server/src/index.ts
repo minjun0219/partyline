@@ -124,7 +124,7 @@ app.post("/v1/channels/:id/invites", async (c) => {
   const channelId = channelIdFrom(c);
   if (!channelId) return sendError(c, "not_found", "no such channel");
   const token = bearerFrom(c.req.header("Authorization") ?? null);
-  if (!token) return sendError(c, "unauthorized", "participant token required");
+  if (!token) return sendError(c, "unauthorized", "party token required");
   const body = (await readJson(c)) ?? {};
   const ttl = typeof body.ttl_seconds === "number" ? body.ttl_seconds : undefined;
   const uses = typeof body.max_uses === "number" ? body.max_uses : undefined;
@@ -168,20 +168,20 @@ app.post("/v1/channels/:id/join", async (c) => {
   return respond(c, result, 201);
 });
 
-app.get("/v1/channels/:id/participants", async (c) => {
+app.get("/v1/channels/:id/parties", async (c) => {
   const channelId = channelIdFrom(c);
   if (!channelId) return sendError(c, "not_found", "no such channel");
   const token = bearerFrom(c.req.header("Authorization") ?? null);
-  if (!token) return sendError(c, "unauthorized", "participant token required");
-  const result = await channel(c.env, channelId).listParticipants(token);
+  if (!token) return sendError(c, "unauthorized", "party token required");
+  const result = await channel(c.env, channelId).listParties(token);
   return respond(c, result);
 });
 
-app.patch("/v1/channels/:id/participants/me", async (c) => {
+app.patch("/v1/channels/:id/parties/me", async (c) => {
   const channelId = channelIdFrom(c);
   if (!channelId) return sendError(c, "not_found", "no such channel");
   const token = bearerFrom(c.req.header("Authorization") ?? null);
-  if (!token) return sendError(c, "unauthorized", "participant token required");
+  if (!token) return sendError(c, "unauthorized", "party token required");
   const body = await readJson(c);
   const displayName = asString(body?.display_name)?.trim();
   const about = asString(body?.about)?.trim();
@@ -201,24 +201,24 @@ app.patch("/v1/channels/:id/participants/me", async (c) => {
   return respond(c, result);
 });
 
-app.delete("/v1/channels/:id/participants/me", async (c) => {
+app.delete("/v1/channels/:id/parties/me", async (c) => {
   const channelId = channelIdFrom(c);
   if (!channelId) return sendError(c, "not_found", "no such channel");
   const token = bearerFrom(c.req.header("Authorization") ?? null);
-  if (!token) return sendError(c, "unauthorized", "participant token required");
+  if (!token) return sendError(c, "unauthorized", "party token required");
   const result = await channel(c.env, channelId).leave(token);
   if (!result.ok) return respond(c, result);
   return c.body(null, 204);
 });
 
-// Any participant may destroy the channel — the in-band remedy for a leaked
+// Any party may destroy the channel — the in-band remedy for a leaked
 // invite or misplaced trust (SPEC.md §4).
 app.delete("/v1/channels/:id", async (c) => {
   const channelId = channelIdFrom(c);
   if (!channelId) return sendError(c, "not_found", "no such channel");
   const token = bearerFrom(c.req.header("Authorization") ?? null);
-  if (!token) return sendError(c, "unauthorized", "participant token required");
-  const result = await channel(c.env, channelId).destroyByParticipant(token);
+  if (!token) return sendError(c, "unauthorized", "party token required");
+  const result = await channel(c.env, channelId).destroyByParty(token);
   if (!result.ok) return respond(c, result);
   return c.body(null, 204);
 });
@@ -229,7 +229,7 @@ app.post("/v1/channels/:id/messages", async (c) => {
   const channelId = channelIdFrom(c);
   if (!channelId) return sendError(c, "not_found", "no such channel");
   const token = bearerFrom(c.req.header("Authorization") ?? null);
-  if (!token) return sendError(c, "unauthorized", "participant token required");
+  if (!token) return sendError(c, "unauthorized", "party token required");
   const body = await readJson(c);
   const to = asString(body?.to);
   const text = asString(body?.body);
@@ -249,7 +249,7 @@ app.get("/v1/channels/:id/inbox", async (c) => {
   const channelId = channelIdFrom(c);
   if (!channelId) return sendError(c, "not_found", "no such channel");
   const token = bearerFrom(c.req.header("Authorization") ?? null);
-  if (!token) return sendError(c, "unauthorized", "participant token required");
+  if (!token) return sendError(c, "unauthorized", "party token required");
   const wait = Number.parseInt(c.req.query("wait") ?? "0", 10) || 0;
   const afterSeq = Number.parseInt(c.req.query("after_seq") ?? "0", 10) || 0;
   const limit = Number.parseInt(c.req.query("limit") ?? "16", 10) || 16;
@@ -261,7 +261,7 @@ app.post("/v1/channels/:id/inbox/ack", async (c) => {
   const channelId = channelIdFrom(c);
   if (!channelId) return sendError(c, "not_found", "no such channel");
   const token = bearerFrom(c.req.header("Authorization") ?? null);
-  if (!token) return sendError(c, "unauthorized", "participant token required");
+  if (!token) return sendError(c, "unauthorized", "party token required");
   const body = await readJson(c);
   if (typeof body?.seq !== "number") return sendError(c, "invalid_request", "seq is required");
   const result = await channel(c.env, channelId).ack(token, body.seq);
