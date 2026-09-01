@@ -1,0 +1,7 @@
+{
+  "name": "partyline",
+  "description": "Cross-machine session messaging over a Partyline relay you configure yourself. Explicit join only — starting a session joins nothing. Every send is visible; every message is addressed.",
+  "author": {
+    "name": "Minjun Kim"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "name": "partyline",
+  "owner": {
+    "name": "Minjun Kim"
+  },
+  "metadata": {
+    "description": "Cross-machine session messaging over a relay you run yourself — client plugin for the Partyline protocol."
+  },
+  "plugins": [
+    {
+      "name": "partyline",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/minjun0219/partyline.git",
+        "path": "plugin"
+      },
+      "description": "Partyline client: explicit channel join, addressed sends with recipient liveness, visible outbound traffic, ack-after-inject delivery into the session. Requires a relay URL you configure — there is no default relay."
+    }
+  ]
+}
