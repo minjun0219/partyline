@@ -3,7 +3,7 @@
   //   wrangler deploy
   // There are no secrets to configure — the relay is admin-less by design
   // (SPEC.md §8). To run a closed relay, put an access layer in front.
-  "name": "partyline-relay",
+  "name": "partyline",
   "main": "src/index.ts",
   "compatibility_date": "2026-08-01",
   "durable_objects": {
