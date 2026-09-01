@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm -r typecheck
+      # Includes the plugin's e2e test, which spawns the reference relay under
+      # wrangler and runs the whole protocol story against it.
+      - run: pnpm -r test
+      - name: bundled MCP server is current
+        run: |
+          pnpm --dir plugin/mcp build
+          git diff --exit-code plugin/mcp/dist
