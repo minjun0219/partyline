@@ -68,6 +68,8 @@ function asString(value: unknown): string | undefined {
 }
 
 function fieldLength(value: string): number {
+  // spec limits count code points, so spreading is the intended measure
+  // oxlint-disable-next-line typescript/no-misused-spread
   return [...value].length;
 }
 

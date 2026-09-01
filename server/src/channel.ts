@@ -456,8 +456,8 @@ export class ChannelDO extends DurableObject<Record<string, never>> {
     };
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: row shape is checked by the queries above
-  private envelopeFromRow(row: any): MessageEnvelope {
+  // row shape is fixed by the SELECTs above; the casts narrow SqlStorageValue
+  private envelopeFromRow(row: Record<string, SqlStorageValue>): MessageEnvelope {
     return {
       v: 1,
       message_id: row.message_id as string,

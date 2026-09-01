@@ -25165,6 +25165,10 @@ var import_websocket_server = __toESM(require_websocket_server(), 1);
 var wrapper_default = import_websocket.default;
 
 // src/receive.ts
+function rawText(raw) {
+  if (Array.isArray(raw)) return Buffer.concat(raw).toString("utf8");
+  return (raw instanceof ArrayBuffer ? Buffer.from(raw) : raw).toString("utf8");
+}
 var BACKOFF_BASE_MS = 1e3;
 var BACKOFF_MAX_MS = 6e4;
 var ChannelConnection = class {
@@ -25208,7 +25212,7 @@ var ChannelConnection = class {
     ws.on("message", (raw) => {
       let frame;
       try {
-        frame = JSON.parse(raw.toString());
+        frame = JSON.parse(rawText(raw));
       } catch {
         return;
       }
@@ -25227,7 +25231,7 @@ var ChannelConnection = class {
         this.halt(`stream superseded \u2014 another process holds this seat (${reason})`);
         return;
       }
-      if (code === 4401 || code === 4403 || code === 4404) {
+      if (code === 4401 || code === 4404) {
         this.halt(`relay closed the stream (${code} ${reason}) \u2014 rejoin with a fresh invite`);
         return;
       }

@@ -9,9 +9,9 @@
   "durable_objects": {
     "bindings": [
       { "name": "CHANNEL", "class_name": "ChannelDO" },
-      { "name": "GATE", "class_name": "RateLimitDO" }
-    ]
+      { "name": "GATE", "class_name": "RateLimitDO" },
+    ],
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ChannelDO", "RateLimitDO"] }],
-  "observability": { "enabled": true }
+  "observability": { "enabled": true },
 }

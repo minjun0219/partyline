@@ -8,9 +8,15 @@
 // message that never reached the session (the cursor deletes everything at or
 // below the acked seq). A duplicate is recoverable; a silent loss is not.
 
-import WebSocket from "ws";
+import WebSocket, { type RawData } from "ws";
 import type { Seat } from "./config.ts";
 import type { MessageEnvelope, ServerFrame } from "./types.ts";
+
+// ws hands frames over as Buffer, Buffer[] or ArrayBuffer depending on the runtime
+function rawText(raw: RawData): string {
+  if (Array.isArray(raw)) return Buffer.concat(raw).toString("utf8");
+  return (raw instanceof ArrayBuffer ? Buffer.from(raw) : raw).toString("utf8");
+}
 
 const BACKOFF_BASE_MS = 1000;
 const BACKOFF_MAX_MS = 60_000;
@@ -70,7 +76,7 @@ export class ChannelConnection {
     ws.on("message", (raw) => {
       let frame: ServerFrame;
       try {
-        frame = JSON.parse(raw.toString()) as ServerFrame;
+        frame = JSON.parse(rawText(raw)) as ServerFrame;
       } catch {
         return;
       }
@@ -91,7 +97,7 @@ export class ChannelConnection {
         this.halt(`stream superseded — another process holds this seat (${reason})`);
         return;
       }
-      if (code === 4401 || code === 4403 || code === 4404) {
+      if (code === 4401 || code === 4404) {
         this.halt(`relay closed the stream (${code} ${reason}) — rejoin with a fresh invite`);
         return;
       }
