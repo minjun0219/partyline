@@ -25399,6 +25399,17 @@ function resolveSelf(env = process.env) {
   }
   return null;
 }
+function formatInjection(envelope, channelLabel) {
+  const parts = [
+    `partyline \xB7 ${envelope.from.display_name} @ ${envelope.from.machine_label} \u2192 you`,
+    `channel ${channelLabel}`,
+    `id ${envelope.message_id}`
+  ];
+  if (envelope.reply_to) parts.push(`reply_to ${envelope.reply_to}`);
+  return `${parts.join(" \xB7 ")}
+
+${envelope.body}`;
+}
 function buildWireLine(opts) {
   return `${JSON.stringify({
     type: "user",
@@ -25495,7 +25506,7 @@ function startReceiving(config2, seat) {
     inject: (envelope) => injectToSocket(
       self,
       `${envelope.from.display_name} (partyline:${seat.channel_name || seat.channel_id})`,
-      envelope.body
+      formatInjection(envelope, seat.channel_name || seat.channel_id)
     ),
     note: (note) => notes.push(note)
   });

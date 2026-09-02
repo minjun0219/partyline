@@ -17,7 +17,7 @@ import {
 import { ChannelConnection } from "./receive.ts";
 import * as relay from "./relay.ts";
 import { RelayError } from "./relay.ts";
-import { injectToSocket, resolveSelf } from "./session.ts";
+import { formatInjection, injectToSocket, resolveSelf } from "./session.ts";
 import type { PartyView } from "./types.ts";
 
 interface JoinedChannel {
@@ -91,7 +91,7 @@ function startReceiving(config: PartylineConfig, seat: Seat): JoinedChannel {
       injectToSocket(
         self,
         `${envelope.from.display_name} (partyline:${seat.channel_name || seat.channel_id})`,
-        envelope.body,
+        formatInjection(envelope, seat.channel_name || seat.channel_id),
       ),
     note: (note) => notes.push(note),
   });

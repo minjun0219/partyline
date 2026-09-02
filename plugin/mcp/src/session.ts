@@ -9,6 +9,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { createConnection } from "node:net";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import type { MessageEnvelope } from "./types.ts";
 
 export interface SessionSelf {
   sessionId: string;
@@ -59,6 +60,23 @@ export function resolveSelf(env: NodeJS.ProcessEnv = process.env): SessionSelf |
     }
   }
   return null;
+}
+
+/**
+ * What the session actually sees. Claude Code shows the content and not the
+ * `from` field, so everything the session needs to act on the message — who
+ * sent it, from where, and the id to put in reply_to — has to be in the text.
+ * One header line, then the body verbatim. The header is the client's; the
+ * body is the sender's (SPEC.md §7.3).
+ */
+export function formatInjection(envelope: MessageEnvelope, channelLabel: string): string {
+  const parts = [
+    `partyline · ${envelope.from.display_name} @ ${envelope.from.machine_label} → you`,
+    `channel ${channelLabel}`,
+    `id ${envelope.message_id}`,
+  ];
+  if (envelope.reply_to) parts.push(`reply_to ${envelope.reply_to}`);
+  return `${parts.join(" · ")}\n\n${envelope.body}`;
 }
 
 /** The NDJSON line the session socket accepts. `session_id` must match the

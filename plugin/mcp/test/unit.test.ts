@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { configDir, dropSeat, loadConfig, loadSeats, saveConfig, saveSeat } from "../src/config.ts";
-import { buildWireLine } from "../src/session.ts";
+import { buildWireLine, formatInjection } from "../src/session.ts";
 
 let dir: string | null = null;
 function tempEnv(): NodeJS.ProcessEnv {
@@ -71,5 +71,32 @@ describe("wire line", () => {
     expect(parsed.session_id).toBe("s-123");
     expect(parsed.from).toBe("alpha (partyline:ops)");
     expect(typeof parsed.uuid).toBe("string");
+  });
+});
+
+describe("injection text", () => {
+  const envelope = {
+    v: 1 as const,
+    message_id: "x_abc",
+    channel_id: "c_1",
+    seq: 3,
+    from: { party_id: "p_1", display_name: "alice", machine_label: "laptop" },
+    to: "p_2",
+    body: "tag pushed",
+    sent_at: "2026-09-02T00:00:00.000Z",
+    reply_to: null,
+  };
+
+  it("carries sender, machine and message_id ahead of the body", () => {
+    const text = formatInjection(envelope, "release");
+    expect(text).toBe(
+      "partyline · alice @ laptop → you · channel release · id x_abc\n\ntag pushed",
+    );
+  });
+
+  it("names the message being replied to when there is one", () => {
+    expect(formatInjection({ ...envelope, reply_to: "x_prev" }, "release")).toContain(
+      "id x_abc · reply_to x_prev\n\n",
+    );
   });
 });
