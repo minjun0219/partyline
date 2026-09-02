@@ -81,7 +81,7 @@ describe("bundled MCP server", () => {
     child.stdin.write(rpc(3, "tools/call", { name: "partyline_status", arguments: {} }));
     const status = await waitFor(3);
     const textOut = (status.result.content as { text: string }[])[0]?.text ?? "";
-    expect(textOut).toContain("NOT CONFIGURED");
+    expect(textOut).toContain("not configured (no default");
 
     child.kill();
   }, 20_000);

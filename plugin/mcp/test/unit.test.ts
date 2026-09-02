@@ -2,7 +2,16 @@ import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { configDir, dropSeat, loadConfig, loadSeats, saveConfig, saveSeat } from "../src/config.ts";
+import {
+  configDir,
+  dropSeat,
+  loadConfig,
+  loadSeats,
+  saveConfig,
+  saveSeat,
+  type Seat,
+} from "../src/config.ts";
+import { formatInviteUrl, parseInviteUrl } from "../src/invite.ts";
 import { buildWireLine, formatInjection } from "../src/session.ts";
 
 let dir: string | null = null;
@@ -42,6 +51,7 @@ describe("seats", () => {
   it("persists, updates, and drops seats per channel", () => {
     const env = tempEnv();
     const seat = {
+      relay_url: "https://relay.example",
       channel_id: "c_1",
       channel_name: "ops",
       party_id: "p_1",
@@ -54,6 +64,60 @@ describe("seats", () => {
     expect(loadSeats(env).c_1?.last_injected_seq).toBe(7);
     dropSeat("c_1", env);
     expect(loadSeats(env).c_1).toBeUndefined();
+  });
+
+  it("drops seats that do not name their relay rather than guessing one", () => {
+    const env = tempEnv();
+    const { relay_url: _omitted, ...legacy } = {
+      relay_url: "https://relay.example",
+      channel_id: "c_old",
+      channel_name: "ops",
+      party_id: "p_1",
+      party_token: "pt_x",
+      display_name: "alpha",
+      last_injected_seq: 0,
+    };
+    saveSeat(legacy as unknown as Seat, env);
+    expect(loadSeats(env).c_old).toBeUndefined();
+  });
+});
+
+describe("invite URL (SPEC.md §3)", () => {
+  const invite = {
+    relay_url: "https://relay.example",
+    channel_id: "c_4nRt9v",
+    invite_token: "iv_abc-D_e",
+  };
+
+  it("round-trips through <relay>/join#<channel>/<token>", () => {
+    const url = formatInviteUrl(invite);
+    expect(url).toBe("https://relay.example/join#c_4nRt9v/iv_abc-D_e");
+    expect(parseInviteUrl(url)).toEqual(invite);
+  });
+
+  it("tolerates a trailing slash on the relay URL", () => {
+    expect(formatInviteUrl({ ...invite, relay_url: "https://relay.example/" })).toBe(
+      "https://relay.example/join#c_4nRt9v/iv_abc-D_e",
+    );
+  });
+
+  it("keeps a path prefix in front of the relay", () => {
+    const url = "https://host.example/partyline/join#c_1/iv_1";
+    expect(parseInviteUrl(url)?.relay_url).toBe("https://host.example/partyline");
+  });
+
+  it("rejects anything that is not an invite URL", () => {
+    for (const bad of [
+      "iv_abc",
+      "https://relay.example/join",
+      "https://relay.example/join#c_1",
+      "https://relay.example/join#/iv_1",
+      "https://relay.example/invite#c_1/iv_1",
+      "https://relay.example/join?x=1#c_1/iv_1",
+      "ftp://relay.example/join#c_1/iv_1",
+    ]) {
+      expect(parseInviteUrl(bad), bad).toBeNull();
+    }
   });
 });
 

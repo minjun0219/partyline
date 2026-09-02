@@ -8,7 +8,11 @@ import { homedir, hostname } from "node:os";
 import { join } from "node:path";
 
 export interface PartylineConfig {
-  /** Relay origin, e.g. https://relay.example.com — null means unconfigured. */
+  /**
+   * Relay used to create channels, e.g. https://relay.example.com — null
+   * means unconfigured. Joining needs no configuration: an invite names its
+   * relay (SPEC.md §3).
+   */
   relay_url: string | null;
   /** Self-declared, shown in party lists (SPEC.md §4). */
   machine_label: string;
@@ -22,6 +26,8 @@ export interface PartylineConfig {
  * not create auto-join (SPEC.md §7.2).
  */
 export interface Seat {
+  /** The relay this seat lives on — from the invite that created it (SPEC.md §3). */
+  relay_url: string;
   channel_id: string;
   channel_name: string;
   party_id: string;
@@ -74,8 +80,14 @@ export function saveConfig(config: PartylineConfig, env: NodeJS.ProcessEnv = pro
 
 export function loadSeats(env: NodeJS.ProcessEnv = process.env): Record<string, Seat> {
   try {
-    const raw = JSON.parse(readFileSync(seatsFile(env), "utf8"));
-    if (raw && typeof raw === "object") return raw as Record<string, Seat>;
+    const raw = JSON.parse(readFileSync(seatsFile(env), "utf8")) as Record<string, Partial<Seat>>;
+    if (raw && typeof raw === "object") {
+      // A seat without a relay cannot be resumed — the relay used to come from
+      // config, and guessing it now would be a default by another name.
+      return Object.fromEntries(
+        Object.entries(raw).filter(([, seat]) => typeof seat.relay_url === "string"),
+      ) as Record<string, Seat>;
+    }
   } catch {
     // none yet
   }

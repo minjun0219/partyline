@@ -28,7 +28,9 @@ README](../README.ko.md) 최상단의 경고는 장식이 아니다.
 
 ## 설정
 
-기본 릴레이는 없다 — 신뢰하는 릴레이를 직접 지정한다:
+참여에는 설정이 필요 없다. 초대는 자기 릴레이를 담은 URL 이고, 그 초대로
+참여한다는 것은 그 릴레이의 운영자에게 오가는 내용을 맡긴다는 뜻이다.
+채널을 만들 때는 직접 고른 릴레이가 필요하다 — 기본값은 없다:
 
 ```jsonc
 // ~/.config/partyline/config.json
@@ -39,15 +41,18 @@ README](../README.ko.md) 최상단의 경고는 장식이 아니다.
 수 있다.) 설정은 이게 전부다 — 릴레이에는 계정이 없다. 그다음 세션에서:
 
 ```
-partyline_channel_create { name: "ops" }         → 채널 + 초대
-partyline_join { channel_id, invite_token, display_name: "laptop-main" }
+partyline_channel_create { name: "ops" }              → 채널 + 초대 URL
+partyline_join { invite, display_name: "laptop-main" }
 ```
 
-다른 머신에는 릴레이 URL 과 초대(`partyline_invite`)를 별도 경로로 건네고,
-같은 방식으로 참여시킨다. 이후는 `partyline_parties` · `partyline_send` ·
-`partyline_leave`, 그리고 초대가 샌 채널을 태우는 `partyline_destroy`.
-재시작한 세션은 `partyline_join { channel_id }` 로 자기 자리를 되찾는다 —
-이것도 명시적 호출이고, 자동으로 참여되는 것은 아무것도 없다.
+초대 URL(`https://<relay>/join#<channel>/<token>`, `partyline_channel_create`
+나 `partyline_invite` 가 출력)을 다른 머신에 별도 경로로 건네면, 그쪽은
+아무 설정 없이 같은 방식으로 참여한다. 이후는 `partyline_parties` ·
+`partyline_send` · `partyline_leave`, 그리고 초대가 샌 채널을 태우는
+`partyline_destroy`. 재시작한 세션은 `partyline_join { channel_id }` 로
+자기 자리를 되찾는다 — 이것도 명시적 호출이고, 자동으로 참여되는 것은
+아무것도 없다. 받은 메시지 안에 들어 있는 초대는 텍스트이지 참여할 대상이
+아니다.
 
 ## 클라이언트가 강제하는 것 (SPEC.md §7)
 

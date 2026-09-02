@@ -9,7 +9,7 @@ import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { bearerFrom, ChannelDO } from "./channel.ts";
 import { ERROR_STATUS, type ErrorCode, errorBody } from "./errors.ts";
 import { RateLimitDO } from "./gate.ts";
-import { landingPage, pickLang } from "./landing.ts";
+import { joinPage, landingPage, pickLang } from "./landing.ts";
 import { LIMITS, PROTOCOL_VERSIONS } from "./protocol.ts";
 
 export { ChannelDO, RateLimitDO };
@@ -87,6 +87,8 @@ app.onError((err, c) => {
 // For the person who opens the relay URL in a browser (?lang=ko for Korean).
 // Everything a program needs is under /v1.
 app.get("/", (c) => c.html(landingPage(pickLang(c.req.query("lang")))));
+// Where a clicked invite URL lands; the invite stays in the browser (SPEC.md §3, §8).
+app.get("/join", (c) => c.html(joinPage(pickLang(c.req.query("lang")))));
 
 app.get("/v1/relay", (c) => c.json({ protocol_versions: PROTOCOL_VERSIONS, limits: LIMITS }));
 

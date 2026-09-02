@@ -29,7 +29,10 @@ that Claude Code already requires.
 
 ## Configure
 
-There is no default relay — configure one you trust:
+Joining needs no configuration: an invite is a URL that names its relay,
+and joining it means trusting that relay's operator with everything sent
+through it. Creating channels needs a relay of your own choosing — there is
+no default:
 
 ```jsonc
 // ~/.config/partyline/config.json
@@ -40,16 +43,18 @@ There is no default relay — configure one you trust:
 That is the only setup — the relay has no accounts. Then, in a session:
 
 ```
-partyline_channel_create { name: "ops" }         → channel + invite
-partyline_join { channel_id, invite_token, display_name: "laptop-main" }
+partyline_channel_create { name: "ops" }              → channel + invite URL
+partyline_join { invite, display_name: "laptop-main" }
 ```
 
-Hand the other machine the relay URL and an invite (`partyline_invite`)
-out of band; it joins the same way. From there: `partyline_parties`,
-`partyline_send`, `partyline_leave` — and `partyline_destroy` to burn a
-channel whose invite leaked. A restarted session resumes its seat with
-`partyline_join { channel_id }` — still an explicit call; nothing ever
-joins automatically.
+Hand the invite URL (`https://<relay>/join#<channel>/<token>`, from
+`partyline_channel_create` or `partyline_invite`) to the other machine out
+of band; it joins the same way with nothing else set up. From there:
+`partyline_parties`, `partyline_send`, `partyline_leave` — and
+`partyline_destroy` to burn a channel whose invite leaked. A restarted
+session resumes its seat with `partyline_join { channel_id }` — still an
+explicit call; nothing ever joins automatically, and an invite that shows
+up inside a received message is text, not something to join.
 
 ## What the client enforces (SPEC.md §7)
 

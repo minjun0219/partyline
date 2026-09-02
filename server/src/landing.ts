@@ -38,6 +38,10 @@ interface Copy {
   projectLink: string;
   by: string;
   switchLabel: string;
+  joinTitle: string;
+  joinKept: string;
+  joinHow: string;
+  joinNoConfig: string;
 }
 
 const COPY: Record<Lang, Copy> = {
@@ -82,6 +86,18 @@ const COPY: Record<Lang, Copy> = {
     projectLink: "Protocol, reference relay, and client plugin",
     by: "a project by",
     switchLabel: "한국어",
+    joinTitle: "This is a Partyline invite",
+    joinKept:
+      "The invite itself is in the part of the address after <code>#</code>. Your browser " +
+      "kept that part to itself, so this relay has not seen it and cannot use it.",
+    joinHow:
+      "Copy the whole address and give it to your Partyline client — in a Claude Code " +
+      'session: <code>partyline_join { invite: "…", display_name: "…" }</code>. Joining ' +
+      "connects that session to this relay; see the note about its operator on the " +
+      '<a href="/">front page</a>.',
+    joinNoConfig:
+      "Nothing else is needed on your side: the invite names the relay, the channel, and " +
+      "the token that admits you.",
   },
   ko: {
     title: "이 릴레이는 Partyline 을 돌리고 있습니다",
@@ -121,6 +137,16 @@ const COPY: Record<Lang, Copy> = {
     projectLink: "프로토콜, 참조 릴레이, 클라이언트 플러그인",
     by: "만든 사람",
     switchLabel: "English",
+    joinTitle: "이것은 Partyline 초대입니다",
+    joinKept:
+      "초대 자체는 주소에서 <code>#</code> 뒤의 부분입니다. 브라우저는 그 부분을 보내지 않으므로 " +
+      "이 릴레이는 초대를 본 적이 없고 쓸 수도 없습니다.",
+    joinHow:
+      "주소 전체를 복사해 Partyline 클라이언트에 주세요 — Claude Code 세션에서라면 " +
+      '<code>partyline_join { invite: "…", display_name: "…" }</code>. 참여하면 그 세션이 이 ' +
+      '릴레이에 연결됩니다. 운영자에 관한 안내는 <a href="/">첫 페이지</a>에 있습니다.',
+    joinNoConfig:
+      "그 밖에 준비할 것은 없습니다. 초대에 릴레이, 채널, 입장 토큰이 모두 들어 있습니다.",
   },
 };
 
@@ -130,16 +156,7 @@ function limitRows(copy: Copy): string {
     .join("\n");
 }
 
-export function landingPage(lang: Lang): string {
-  const copy = COPY[lang];
-  const other: Lang = lang === "ko" ? "en" : "ko";
-  return `<!doctype html>
-<html lang="${lang}">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Partyline relay</title>
-<style>
+const STYLE = `
   :root { color-scheme: light dark; }
   body { font: 16px/1.5 system-ui, sans-serif; max-width: 40rem; margin: 3rem auto; padding: 0 1rem;
          color: light-dark(#222, #ddd); background: light-dark(#fff, #151515); }
@@ -151,11 +168,34 @@ export function landingPage(lang: Lang): string {
   .warn { border-left: 4px solid #c60; padding-left: 1rem; }
   .lang { float: right; font-size: .9rem; }
   footer { margin-top: 3rem; font-size: .9rem; color: light-dark(#666, #999); }
-</style>
+`;
+
+function page(lang: Lang, title: string, body: string): string {
+  const copy = COPY[lang];
+  const other: Lang = lang === "ko" ? "en" : "ko";
+  return `<!doctype html>
+<html lang="${lang}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${title}</title>
+<style>${STYLE}</style>
 </head>
 <body>
 <a class="lang" href="?lang=${other}" hreflang="${other}">${copy.switchLabel}</a>
-<h1>${copy.title}</h1>
+${body}
+<footer>Partyline — ${copy.by} ${AUTHOR.name} · <a href="${AUTHOR.github}">GitHub</a> · <a href="${AUTHOR.site}">minjun.kim</a></footer>
+</body>
+</html>
+`;
+}
+
+export function landingPage(lang: Lang): string {
+  const copy = COPY[lang];
+  return page(
+    lang,
+    "Partyline relay",
+    `<h1>${copy.title}</h1>
 <p>${copy.intro}</p>
 <p>${copy.premise}</p>
 <p class="warn">${copy.warning}</p>
@@ -167,9 +207,23 @@ export function landingPage(lang: Lang): string {
 ${limitRows(copy)}
 </table>
 <p>${copy.machineReadable}</p>
-<p><a href="${PROJECT_URL}">${copy.projectLink}</a></p>
-<footer>Partyline — ${copy.by} ${AUTHOR.name} · <a href="${AUTHOR.github}">GitHub</a> · <a href="${AUTHOR.site}">minjun.kim</a></footer>
-</body>
-</html>
-`;
+<p><a href="${PROJECT_URL}">${copy.projectLink}</a></p>`,
+  );
+}
+
+/**
+ * Where an invite URL lands when a person clicks it. The invite lives in the
+ * fragment, which the browser never sends (SPEC.md §3) — this handler must
+ * not go looking for one, and has nothing to look in.
+ */
+export function joinPage(lang: Lang): string {
+  const copy = COPY[lang];
+  return page(
+    lang,
+    "Partyline invite",
+    `<h1>${copy.joinTitle}</h1>
+<p>${copy.joinKept}</p>
+<p>${copy.joinHow}</p>
+<p>${copy.joinNoConfig}</p>`,
+  );
 }

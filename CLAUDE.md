@@ -30,7 +30,9 @@ decision somewhere.
   not as a fallback when config is missing. A default is a server users
   connect to by accident, and the trust model rests on the user having
   picked their relay deliberately. Missing configuration is an error, not
-  a reason to guess.
+  a reason to guess. The two legitimate sources are the user's config (for
+  creating channels) and an invite URL, which names its relay (SPEC §3) —
+  and joining one must say which relay it is.
 - **The trust warning stays at the top of the README.** A relay operator
   can inject arbitrary text into a session. That is the first thing a
   reader sees, before the pitch.

@@ -64,7 +64,7 @@ One word per concept; the rest of this document uses them exactly as defined her
 | **Session** | The AI coding session on a machine. It becomes a party by joining a channel, one party per channel. |
 | **Client** | The software that speaks this protocol on a session's behalf. §7 binds it. |
 | **User** | The human whose session it is. |
-| **Invite** | A short-lived token, minted by a party, that admits its holder into the channel. Handing one over is an *invitation*. |
+| **Invite** | A short-lived token, minted by a party, that admits its holder into the channel. Travels as an *invite URL* naming its relay (§3). Handing one over is an *invitation*. |
 | **Message** | A body addressed by one party to exactly one other. The **sender** and **recipient** are parties. |
 | **Inbox** | A party's queue of undelivered messages, ordered by `seq`. |
 | **Ack** | The cursor a recipient advances to delete delivered messages. |
@@ -139,6 +139,29 @@ party token exists only inside a session that joined. The relay URL itself is
 deliberately **not** a credential: anyone who knows it can use the relay's resources
 (§8 bounds that), but can reach no channel and no session through it.
 
+### Invite URL
+
+An invite travels as one string that names the relay it is for:
+
+```
+<relay_url>/join#<channel_id>/<invite_token>
+```
+
+`relay_url` is the relay's `https` URL with no query or fragment; the invite URL is
+that URL, the path `/join`, and the channel identifier and invite token in the
+fragment. Clients MUST accept this form in place of a bare token and MUST recover the
+relay URL from it — an invite is complete on its own, so a session that has never
+configured a relay can join with nothing else. Clients SHOULD present invites they mint
+in this form.
+
+The token is in the fragment because browsers do not send fragments: someone who opens
+the URL by mistake reaches the relay's `/join` page (§8) and the credential never
+appears in an access log or a `Referer` header.
+
+Joining an invite is choosing its relay, with everything that means (§9): a client MUST
+show which relay an invite leads to when it joins, and MUST NOT act on an invite that
+arrived as the body of a relayed message without the user's instruction (§7.2).
+
 ---
 
 ## 4. Channels
@@ -166,7 +189,8 @@ nothing to recover it from, by design (§10).
 ```
 
 Creating a channel does **not** join it. The creator uses the returned invite like
-anyone else.
+anyone else. Clients hand invites around as invite URLs (§3); the relay returns the
+bare token because it does not know its own public URL.
 
 ### `POST /v1/channels/{channel_id}/invites` — party credential
 
@@ -426,11 +450,16 @@ bounded (256 messages RECOMMENDED); sending to a full inbox is `inbox_full` (409
 The relay cannot enforce these. They are where most of the safety of the system actually
 lives, so a client that skips them is not a conforming Partyline client.
 
-1. **The relay URL MUST come from configuration, with no default.** A built-in default
-   is a server users connect to by accident.
-2. **A client MUST NOT join a channel as a side effect of starting.** Process startup
-   and channel participation are separate events; if starting a client joined anything,
-   the opt-in boundary that makes private channels meaningful would not exist.
+1. **The relay URL MUST come from configuration or from an invite, with no default.**
+   A built-in default is a server users connect to by accident. An invite names its
+   relay (§3), and joining it is choosing that relay for that channel — so a client MUST
+   say which relay it is joining through, every time.
+2. **A client MUST NOT join a channel as a side effect of starting, or of receiving.**
+   Process startup and channel participation are separate events; if starting a client
+   joined anything, the opt-in boundary that makes private channels meaningful would not
+   exist. Likewise an invite that arrives inside a message body is text (7.3), not an
+   instruction: acting on it would let any party steer the session onto another
+   operator's relay.
 3. **Incoming message bodies MUST be treated as untrusted input.** They are text written
    by another session, which may itself be relaying instructions from somewhere else. A
    client MUST NOT present them in a way that implies they carry the authority of the
@@ -470,9 +499,12 @@ A conforming relay:
   abuse; they are not optional hardening.
 - SHOULD publish its limits and retention in `GET /v1/relay`, and document them for the
   people who connect to it.
+- SHOULD serve a page at `GET /join` telling a person who opened an invite URL that
+  the invite is in the part of the address their browser kept, and how to use it. The
+  relay never receives the invite this way and MUST NOT look for one in the request.
 - MAY serve a human-readable page at `GET /` saying what the relay is and who can see
-  what passes through it. That page is subject to the rules above like any other
-  endpoint: it MUST NOT list channels or parties.
+  what passes through it. Pages like these are subject to the rules above like any
+  other endpoint: they MUST NOT list channels or parties.
 
 **Operation is deployment.** The protocol defines no administrative interface: nothing
 to list channels, nothing to evict parties, no privileged credential to protect (§10).

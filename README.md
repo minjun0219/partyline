@@ -20,7 +20,8 @@ and cannot prevent this.
 one operated by someone you would already trust with the contents of the
 sessions you connect. There is no default relay URL anywhere in this
 repository, and that is deliberate: a default is a server you connect to
-by accident.
+by accident. An invite names the relay it is for, so accepting one is
+also choosing a relay — the client tells you which.
 
 The second line of defense is the client: it must never join a channel
 without you asking it to, and it must show you what it sends. Those are

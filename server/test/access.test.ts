@@ -39,6 +39,16 @@ describe("GET /", () => {
   });
 });
 
+describe("GET /join", () => {
+  it("tells a person who clicked an invite what to do, without seeing the invite", async () => {
+    const res = await api("/join");
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("Partyline invite");
+    expect(html).toContain("partyline_join");
+  });
+});
+
 describe("open channel creation", () => {
   it("requires no credential", async () => {
     const setup = await createChannel("open");

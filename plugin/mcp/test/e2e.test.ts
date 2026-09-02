@@ -102,6 +102,7 @@ describe("client against the reference relay", () => {
     );
 
     const seatB: Seat = {
+      relay_url: RELAY,
       channel_id: created.channel_id,
       channel_name: "e2e",
       party_id: b.party_id,
