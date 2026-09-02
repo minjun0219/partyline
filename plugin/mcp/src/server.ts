@@ -198,15 +198,23 @@ server.registerTool(
     if (joined.size === 0) {
       lines.push("joined this session: none (join is explicit — partyline_join)");
     }
+    const now = Date.now();
+    const ago = (at: number) => `${Math.round((now - at) / 1000)}s ago`;
+    const clock = (at: number) => new Date(at).toISOString();
     for (const { seat, connection, notes } of joined.values()) {
       lines.push(
         `channel ${seat.channel_id} (${seat.channel_name || "unnamed"}) as "${seat.display_name}" via ${seat.relay_url}: ` +
           `${connection.status}, injected ${connection.injected}, cursor ${seat.last_injected_seq}` +
           (connection.status === "connected" && connection.lastFrameAt !== null
-            ? `, last frame ${Math.round((Date.now() - connection.lastFrameAt) / 1000)}s ago (relay pings every 30s)`
+            ? `, last frame ${ago(connection.lastFrameAt)} (relay pings every 30s)`
+            : "") +
+          (connection.connectedAt !== null
+            ? `, stream #${connection.streams} open since ${clock(connection.connectedAt)} (${ago(connection.connectedAt)})`
             : "") +
           (connection.stopReason ? ` — ${connection.stopReason}` : "") +
-          (connection.lastError ? ` — last error: ${connection.lastError}` : ""),
+          (connection.lastError && connection.lastErrorAt !== null
+            ? ` — last error at ${clock(connection.lastErrorAt)} (${ago(connection.lastErrorAt)}): ${connection.lastError}`
+            : ""),
       );
       for (const note of notes.slice(-3)) lines.push(`  note: ${note}`);
     }

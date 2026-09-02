@@ -25191,6 +25191,12 @@ var ChannelConnection = class {
   status = "connecting";
   injected = 0;
   lastError = null;
+  /** Epoch ms of lastError — so an outage can be dated without the user's memory. */
+  lastErrorAt = null;
+  /** Epoch ms the current stream opened; null while not connected. */
+  connectedAt = null;
+  /** Streams opened over this connection's life — 1 is the first, more means reconnects. */
+  streams = 0;
   /** Set when the connection will not come back without user action. */
   stopReason = null;
   /** Epoch ms of the last frame of any kind (pings included); null until open. */
@@ -25241,6 +25247,8 @@ var ChannelConnection = class {
       this.status = "connected";
       this.backoffMs = BACKOFF_BASE_MS;
       this.lastFrameAt = Date.now();
+      this.connectedAt = this.lastFrameAt;
+      this.streams += 1;
       this.startWatchdog(ws);
     });
     ws.on("message", (raw) => {
@@ -25274,18 +25282,24 @@ var ChannelConnection = class {
       this.scheduleReconnect(`stream closed (${code} ${reason || "no reason"})`);
     });
     ws.on("error", (err) => {
-      this.lastError = String(err instanceof Error ? err.message : err);
+      this.fail(String(err instanceof Error ? err.message : err));
     });
+  }
+  fail(message) {
+    this.lastError = message;
+    this.lastErrorAt = Date.now();
   }
   halt(reason) {
     this.status = "stopped";
     this.stopReason = reason;
+    this.connectedAt = null;
     this.deps.note(reason);
     this.ws = null;
   }
   scheduleReconnect(cause) {
     this.status = "backoff";
-    this.lastError = cause;
+    this.fail(cause);
+    this.connectedAt = null;
     this.ws = null;
     const delay = this.backoffMs;
     this.backoffMs = Math.min(this.backoffMs * 2, BACKOFF_MAX_MS);
@@ -25300,7 +25314,7 @@ var ChannelConnection = class {
     try {
       await this.deps.inject(envelope);
     } catch (err) {
-      this.lastError = `inject failed: ${err instanceof Error ? err.message : String(err)}`;
+      this.fail(`inject failed: ${err instanceof Error ? err.message : String(err)}`);
       try {
         ws.close(1e3, "inject failed");
       } catch {
@@ -25649,9 +25663,12 @@ server.registerTool(
     if (joined.size === 0) {
       lines.push("joined this session: none (join is explicit \u2014 partyline_join)");
     }
+    const now = Date.now();
+    const ago = (at) => `${Math.round((now - at) / 1e3)}s ago`;
+    const clock = (at) => new Date(at).toISOString();
     for (const { seat, connection, notes } of joined.values()) {
       lines.push(
-        `channel ${seat.channel_id} (${seat.channel_name || "unnamed"}) as "${seat.display_name}" via ${seat.relay_url}: ${connection.status}, injected ${connection.injected}, cursor ${seat.last_injected_seq}` + (connection.status === "connected" && connection.lastFrameAt !== null ? `, last frame ${Math.round((Date.now() - connection.lastFrameAt) / 1e3)}s ago (relay pings every 30s)` : "") + (connection.stopReason ? ` \u2014 ${connection.stopReason}` : "") + (connection.lastError ? ` \u2014 last error: ${connection.lastError}` : "")
+        `channel ${seat.channel_id} (${seat.channel_name || "unnamed"}) as "${seat.display_name}" via ${seat.relay_url}: ${connection.status}, injected ${connection.injected}, cursor ${seat.last_injected_seq}` + (connection.status === "connected" && connection.lastFrameAt !== null ? `, last frame ${ago(connection.lastFrameAt)} (relay pings every 30s)` : "") + (connection.connectedAt !== null ? `, stream #${connection.streams} open since ${clock(connection.connectedAt)} (${ago(connection.connectedAt)})` : "") + (connection.stopReason ? ` \u2014 ${connection.stopReason}` : "") + (connection.lastError && connection.lastErrorAt !== null ? ` \u2014 last error at ${clock(connection.lastErrorAt)} (${ago(connection.lastErrorAt)}): ${connection.lastError}` : "")
       );
       for (const note of notes.slice(-3)) lines.push(`  note: ${note}`);
     }

@@ -18,6 +18,10 @@ Call `partyline_status` and read it against these expectations:
   piling up on the relay.
 - `backoff`: the stream closed and is being retried with increasing delay. Sends still
   work; only receiving is paused, and the backlog is replayed when the stream returns.
+- `stream #N open since <time>` and `last error at <time>: …` date the current stream
+  and the last break. `#1` means no reconnect has happened; a higher number with a
+  recent `last error` is an outage the client already recovered from. Quote these
+  times when comparing notes with the other side — there is no log file to consult.
 - `stopped — …`: it will not come back by itself. The reason says why — another
   process took the seat (4409), the credential died (4401), the channel is gone
   (4404). Follow the reason; usually `/partyline:join` again.

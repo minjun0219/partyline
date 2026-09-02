@@ -49,6 +49,12 @@ export class ChannelConnection {
   status: ConnectionStatus = "connecting";
   injected = 0;
   lastError: string | null = null;
+  /** Epoch ms of lastError — so an outage can be dated without the user's memory. */
+  lastErrorAt: number | null = null;
+  /** Epoch ms the current stream opened; null while not connected. */
+  connectedAt: number | null = null;
+  /** Streams opened over this connection's life — 1 is the first, more means reconnects. */
+  streams = 0;
   /** Set when the connection will not come back without user action. */
   stopReason: string | null = null;
   /** Epoch ms of the last frame of any kind (pings included); null until open. */
@@ -110,6 +116,8 @@ export class ChannelConnection {
       this.status = "connected";
       this.backoffMs = BACKOFF_BASE_MS;
       this.lastFrameAt = Date.now();
+      this.connectedAt = this.lastFrameAt;
+      this.streams += 1;
       this.startWatchdog(ws);
     });
     ws.on("message", (raw) => {
@@ -146,21 +154,28 @@ export class ChannelConnection {
       this.scheduleReconnect(`stream closed (${code} ${reason || "no reason"})`);
     });
     ws.on("error", (err) => {
-      this.lastError = String(err instanceof Error ? err.message : err);
+      this.fail(String(err instanceof Error ? err.message : err));
       // "close" follows and drives the reconnect.
     });
+  }
+
+  private fail(message: string): void {
+    this.lastError = message;
+    this.lastErrorAt = Date.now();
   }
 
   private halt(reason: string): void {
     this.status = "stopped";
     this.stopReason = reason;
+    this.connectedAt = null;
     this.deps.note(reason);
     this.ws = null;
   }
 
   private scheduleReconnect(cause: string): void {
     this.status = "backoff";
-    this.lastError = cause;
+    this.fail(cause);
+    this.connectedAt = null;
     this.ws = null;
     const delay = this.backoffMs;
     this.backoffMs = Math.min(this.backoffMs * 2, BACKOFF_MAX_MS);
@@ -179,7 +194,7 @@ export class ChannelConnection {
       await this.deps.inject(envelope);
     } catch (err) {
       // Ack nothing, close, and let the reconnect replay from the inbox.
-      this.lastError = `inject failed: ${err instanceof Error ? err.message : String(err)}`;
+      this.fail(`inject failed: ${err instanceof Error ? err.message : String(err)}`);
       try {
         ws.close(1000, "inject failed");
       } catch {

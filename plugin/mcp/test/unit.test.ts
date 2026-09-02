@@ -223,12 +223,19 @@ describe("stream watchdog", () => {
       await new Promise((r) => setTimeout(r, 100));
       expect(connection.status).toBe("connected");
       expect(connections).toBe(1);
+      expect(connection.streams).toBe(1);
+      const openedAt = connection.connectedAt;
+      expect(openedAt).not.toBeNull();
       await new Promise((r) => setTimeout(r, 400));
       expect(connection.lastError).toMatch(/silent for \ds — presumed dead/);
       expect(connection.status).toBe("backoff");
+      // The outage is dated, so status can say when — not just that — it broke.
+      expect(connection.lastErrorAt).toBeGreaterThanOrEqual(openedAt as number);
+      expect(connection.connectedAt).toBeNull();
       // First backoff is 1 s; the silent relay then gets a fresh stream.
       await new Promise((r) => setTimeout(r, 1200));
       expect(connections).toBe(2);
+      expect(connection.streams).toBe(2);
     } finally {
       connection.stop();
       wss.close();
