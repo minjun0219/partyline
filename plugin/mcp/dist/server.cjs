@@ -25124,9 +25124,12 @@ function loadConfig(env = process.env) {
   }
   const fromEnv = env.PARTYLINE_RELAY_URL?.trim();
   const keyFromEnv = env.PARTYLINE_RELAY_KEY?.trim();
+  const keyFromFile = typeof raw.relay_key === "string" ? raw.relay_key.trim() : "";
   return {
     relay_url: fromEnv || (typeof raw.relay_url === "string" ? raw.relay_url : null),
-    relay_key: keyFromEnv || (typeof raw.relay_key === "string" && raw.relay_key ? raw.relay_key : null),
+    // The file's key belongs to the file's relay. When the environment points
+    // at a different relay, that key must not follow (SPEC.md §9).
+    relay_key: keyFromEnv || (fromEnv ? null : keyFromFile || null),
     machine_label: typeof raw.machine_label === "string" && raw.machine_label.trim() !== "" ? raw.machine_label : (0, import_node_os.hostname)()
   };
 }

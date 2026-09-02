@@ -45,12 +45,24 @@ describe("config", () => {
     const env = tempEnv();
     expect(loadConfig(env).relay_key).toBeNull();
     saveConfig(
-      { relay_url: "https://relay.example", relay_key: "rk_file", machine_label: "m" },
+      { relay_url: "https://relay.example", relay_key: "rk_file\n", machine_label: "m" },
       env,
     );
     expect(loadConfig(env).relay_key).toBe("rk_file");
     env.PARTYLINE_RELAY_KEY = "rk_env";
     expect(loadConfig(env).relay_key).toBe("rk_env");
+  });
+
+  it("does not carry the file's key to a relay named by the environment (SPEC.md §9)", () => {
+    const env = tempEnv();
+    saveConfig(
+      { relay_url: "https://relay.example", relay_key: "rk_file", machine_label: "m" },
+      env,
+    );
+    env.PARTYLINE_RELAY_URL = "https://other.example";
+    expect(loadConfig(env)).toMatchObject({ relay_url: "https://other.example", relay_key: null });
+    env.PARTYLINE_RELAY_KEY = "rk_other";
+    expect(loadConfig(env).relay_key).toBe("rk_other");
   });
 
   it("sends the relay key only to the configured relay (SPEC.md §9)", () => {
