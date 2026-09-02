@@ -1,3 +1,9 @@
 packages:
   - server
   - plugin/mcp
+
+# pnpm 10 blocks dependency postinstall scripts unless listed here.
+# workerd downloads the runtime binary wrangler/vitest run on; esbuild its binary.
+onlyBuiltDependencies:
+  - esbuild
+  - workerd
