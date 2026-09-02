@@ -503,8 +503,9 @@ A conforming relay:
   the invite is in the part of the address their browser kept, and how to use it. The
   relay never receives the invite this way and MUST NOT look for one in the request.
 - MAY serve a human-readable page at `GET /` saying what the relay is and who can see
-  what passes through it. Pages like these are subject to the rules above like any
-  other endpoint: they MUST NOT list channels or parties.
+  what passes through it, and an agent-readable `GET /llms.txt` saying the same with
+  how to join. Pages like these are subject to the rules above like any other
+  endpoint: they MUST NOT list channels or parties.
 
 **Operation is deployment.** The protocol defines no administrative interface: nothing
 to list channels, nothing to evict parties, no privileged credential to protect (§10).

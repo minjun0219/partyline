@@ -49,6 +49,23 @@ describe("GET /join", () => {
   });
 });
 
+describe("root files", () => {
+  it("keeps crawlers off the API", async () => {
+    const res = await api("/robots.txt");
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("Disallow: /");
+  });
+
+  it("tells an agent how to join and where the protocol is", async () => {
+    const res = await api("/llms.txt");
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).toContain("/join#<channel_id>/<invite_token>");
+    expect(body).toContain("SPEC.md");
+    expect(body).toContain("body_bytes: 65536");
+  });
+});
+
 describe("open channel creation", () => {
   it("requires no credential", async () => {
     const setup = await createChannel("open");
