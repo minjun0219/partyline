@@ -7,6 +7,7 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { bearerFrom, ChannelDO } from "./channel.ts";
+import { timingSafeEqual } from "./crypto.ts";
 import { ERROR_STATUS, type ErrorCode, errorBody } from "./errors.ts";
 import { RateLimitDO } from "./gate.ts";
 import { joinPage, landingPage, llmsTxt, pickLang, ROBOTS_TXT } from "./landing.ts";
@@ -47,13 +48,6 @@ function sourceOf(c: Ctx): string {
 
 function relayKeyOf(env: Env): string | null {
   return env.RELAY_KEY?.trim() || null;
-}
-
-/** Constant-time on equal lengths; a length mismatch is a wrong key either way. */
-function keyMatches(presented: string, expected: string): boolean {
-  const a = new TextEncoder().encode(presented);
-  const b = new TextEncoder().encode(expected);
-  return a.byteLength === b.byteLength && crypto.subtle.timingSafeEqual(a, b);
 }
 
 function sendError(c: Ctx, code: ErrorCode, message: string) {
@@ -133,7 +127,8 @@ app.post("/v1/channels", async (c) => {
   const relayKey = relayKeyOf(c.env);
   if (relayKey !== null) {
     const presented = bearerFrom(c.req.header("Authorization") ?? null);
-    if (!presented || !keyMatches(presented, relayKey)) {
+    // Hash-then-compare, so a wrong key of any length costs the same (SPEC.md §8).
+    if (!presented || !(await timingSafeEqual(presented, relayKey))) {
       return sendError(
         c,
         "unauthorized",
