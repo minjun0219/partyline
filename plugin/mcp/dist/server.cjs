@@ -25175,6 +25175,9 @@ function rawText(raw) {
 }
 var BACKOFF_BASE_MS = 1e3;
 var BACKOFF_MAX_MS = 6e4;
+var PING_INTERVAL_MS = 3e4;
+var STALE_AFTER_MS = 3 * PING_INTERVAL_MS;
+var WATCHDOG_TICK_MS = 1e4;
 var ChannelConnection = class {
   constructor(deps) {
     this.deps = deps;
@@ -25185,9 +25188,12 @@ var ChannelConnection = class {
   lastError = null;
   /** Set when the connection will not come back without user action. */
   stopReason = null;
+  /** Epoch ms of the last frame of any kind (pings included); null until open. */
+  lastFrameAt = null;
   ws = null;
   backoffMs = BACKOFF_BASE_MS;
   reconnectTimer = null;
+  watchdog = null;
   deliberate = false;
   /** Serializes message handling — frames arrive sync, injection is async. */
   chain = Promise.resolve();
@@ -25198,8 +25204,25 @@ var ChannelConnection = class {
     this.deliberate = true;
     this.status = "stopped";
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.stopWatchdog();
     this.ws?.close(1e3, "client stopped");
     this.ws = null;
+  }
+  startWatchdog(ws) {
+    this.stopWatchdog();
+    const staleAfterMs = this.deps.staleAfterMs ?? STALE_AFTER_MS;
+    this.watchdog = setInterval(() => {
+      const silentMs = Date.now() - (this.lastFrameAt ?? 0);
+      if (silentMs < staleAfterMs) return;
+      this.stopWatchdog();
+      this.ws = null;
+      ws.terminate();
+      this.scheduleReconnect(`stream silent for ${Math.round(silentMs / 1e3)}s \u2014 presumed dead`);
+    }, this.deps.watchdogTickMs ?? WATCHDOG_TICK_MS);
+  }
+  stopWatchdog() {
+    if (this.watchdog) clearInterval(this.watchdog);
+    this.watchdog = null;
   }
   connect() {
     const { relayUrl, seat } = this.deps;
@@ -25212,8 +25235,11 @@ var ChannelConnection = class {
     ws.on("open", () => {
       this.status = "connected";
       this.backoffMs = BACKOFF_BASE_MS;
+      this.lastFrameAt = Date.now();
+      this.startWatchdog(ws);
     });
     ws.on("message", (raw) => {
+      this.lastFrameAt = Date.now();
       let frame;
       try {
         frame = JSON.parse(rawText(raw));
@@ -25229,7 +25255,8 @@ var ChannelConnection = class {
       }
     });
     ws.on("close", (code, reasonBuf) => {
-      if (this.deliberate) return;
+      if (this.deliberate || this.ws !== ws) return;
+      this.stopWatchdog();
       const reason = reasonBuf.toString();
       if (code === 4409) {
         this.halt(`stream superseded \u2014 another process holds this seat (${reason})`);
@@ -25592,7 +25619,7 @@ server.registerTool(
     }
     for (const { seat, connection, notes } of joined.values()) {
       lines.push(
-        `channel ${seat.channel_id} (${seat.channel_name || "unnamed"}) as "${seat.display_name}" via ${seat.relay_url}: ${connection.status}, injected ${connection.injected}, cursor ${seat.last_injected_seq}` + (connection.stopReason ? ` \u2014 ${connection.stopReason}` : "") + (connection.lastError ? ` \u2014 last error: ${connection.lastError}` : "")
+        `channel ${seat.channel_id} (${seat.channel_name || "unnamed"}) as "${seat.display_name}" via ${seat.relay_url}: ${connection.status}, injected ${connection.injected}, cursor ${seat.last_injected_seq}` + (connection.status === "connected" && connection.lastFrameAt !== null ? `, last frame ${Math.round((Date.now() - connection.lastFrameAt) / 1e3)}s ago (relay pings every 30s)` : "") + (connection.stopReason ? ` \u2014 ${connection.stopReason}` : "") + (connection.lastError ? ` \u2014 last error: ${connection.lastError}` : "")
       );
       for (const note of notes.slice(-3)) lines.push(`  note: ${note}`);
     }

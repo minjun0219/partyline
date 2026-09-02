@@ -65,9 +65,14 @@ up inside a received message is text, not something to join.
   your screen via a PostToolUse hook, and the tool result reports whether
   the recipient is connected.
 - **Ack-after-inject.** A message is acknowledged (and thus deleted from
-  the relay) only after it has been written into the session. If
-  injection fails, delivery stops and resumes from the relay's inbox —
-  duplicates are possible, losses are not.
+  the relay) only after it has been written to the session's local
+  socket. If that write fails, delivery stops and resumes from the relay's
+  inbox — duplicates are possible, a loss on the relay path is not. The
+  guarantee ends at the socket: Claude Code reports nothing back once it
+  has taken the text, so what it does with it (queue it, show it, drop it
+  under a permission mode that holds injected input) is outside this
+  client's view. `partyline_status` shows how many messages were injected
+  and when the stream last heard from the relay.
 - **Untrusted input.** Incoming messages are labeled with their sender
   and channel. They are text from another session, possibly relaying text
   from somewhere else — never instructions with your authority.

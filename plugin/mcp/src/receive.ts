@@ -20,6 +20,16 @@ function rawText(raw: RawData): string {
 
 const BACKOFF_BASE_MS = 1000;
 const BACKOFF_MAX_MS = 60_000;
+/** SPEC.md §6: the relay pings at least every 30 s. */
+const PING_INTERVAL_MS = 30_000;
+/**
+ * Three missed pings and the stream is presumed dead. A half-open socket
+ * (laptop slept, NAT entry expired) raises no close event on its own, so
+ * without this a stream can sit at "connected" forever while messages pile
+ * up in the relay inbox.
+ */
+const STALE_AFTER_MS = 3 * PING_INTERVAL_MS;
+const WATCHDOG_TICK_MS = 10_000;
 
 export interface ConnectionDeps {
   relayUrl: string;
@@ -28,6 +38,9 @@ export interface ConnectionDeps {
   inject(envelope: MessageEnvelope): Promise<void>;
   /** One-line status notes surfaced through partyline_status. */
   note(text: string): void;
+  /** Watchdog thresholds — overridable for tests only. */
+  staleAfterMs?: number;
+  watchdogTickMs?: number;
 }
 
 export type ConnectionStatus = "connecting" | "connected" | "backoff" | "stopped";
@@ -38,10 +51,13 @@ export class ChannelConnection {
   lastError: string | null = null;
   /** Set when the connection will not come back without user action. */
   stopReason: string | null = null;
+  /** Epoch ms of the last frame of any kind (pings included); null until open. */
+  lastFrameAt: number | null = null;
 
   private ws: WebSocket | null = null;
   private backoffMs = BACKOFF_BASE_MS;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private watchdog: ReturnType<typeof setInterval> | null = null;
   private deliberate = false;
   /** Serializes message handling — frames arrive sync, injection is async. */
   private chain: Promise<void> = Promise.resolve();
@@ -56,8 +72,29 @@ export class ChannelConnection {
     this.deliberate = true;
     this.status = "stopped";
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.stopWatchdog();
     this.ws?.close(1000, "client stopped");
     this.ws = null;
+  }
+
+  private startWatchdog(ws: WebSocket): void {
+    this.stopWatchdog();
+    const staleAfterMs = this.deps.staleAfterMs ?? STALE_AFTER_MS;
+    this.watchdog = setInterval(() => {
+      const silentMs = Date.now() - (this.lastFrameAt ?? 0);
+      if (silentMs < staleAfterMs) return;
+      // Drop the socket ourselves; its close event is ignored because
+      // this.ws no longer points at it.
+      this.stopWatchdog();
+      this.ws = null;
+      ws.terminate();
+      this.scheduleReconnect(`stream silent for ${Math.round(silentMs / 1000)}s — presumed dead`);
+    }, this.deps.watchdogTickMs ?? WATCHDOG_TICK_MS);
+  }
+
+  private stopWatchdog(): void {
+    if (this.watchdog) clearInterval(this.watchdog);
+    this.watchdog = null;
   }
 
   private connect(): void {
@@ -72,8 +109,11 @@ export class ChannelConnection {
     ws.on("open", () => {
       this.status = "connected";
       this.backoffMs = BACKOFF_BASE_MS;
+      this.lastFrameAt = Date.now();
+      this.startWatchdog(ws);
     });
     ws.on("message", (raw) => {
+      this.lastFrameAt = Date.now();
       let frame: ServerFrame;
       try {
         frame = JSON.parse(rawText(raw)) as ServerFrame;
@@ -89,7 +129,9 @@ export class ChannelConnection {
       }
     });
     ws.on("close", (code, reasonBuf) => {
-      if (this.deliberate) return;
+      // Not ours any more: stopped, or the watchdog already replaced it.
+      if (this.deliberate || this.ws !== ws) return;
+      this.stopWatchdog();
       const reason = reasonBuf.toString();
       // Permanent closes: reconnecting would either fight another process for
       // the same seat (4409) or retry a seat that no longer exists.

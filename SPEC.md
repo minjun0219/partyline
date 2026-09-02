@@ -394,7 +394,10 @@ Frames are JSON text.
 On open the relay sends `ready`, then every unacknowledged message in `seq` order, then
 live traffic. The relay MUST send a `ping` at least every 30 seconds; a client that does
 not answer within 30 seconds is treated as disconnected. Application-level pings are
-specified because WebSocket control frames are not exposed by every runtime.
+specified because WebSocket control frames are not exposed by every runtime. The ping
+also serves the client: a stream that has carried no frame of any kind for three ping
+intervals SHOULD be treated as dead and reopened, since a half-open socket (a sleeping
+laptop, an expired NAT entry) produces no close event on its own.
 
 A party has at most one stream. Opening a second one MUST supersede the first,
 closing it with code `4409` — split delivery across two connections would let each side
@@ -471,7 +474,9 @@ lives, so a client that skips them is not a conforming Partyline client.
 5. **Acknowledge after delivery, not on receipt.** The relay deletes on ack. If a client
    acknowledges when it takes a message off the wire and then fails to hand it to the
    session, the message is gone with no trace. Acknowledge once the message has reached
-   its destination.
+   its destination — and be honest about where that is: a client that hands messages to
+   a host it cannot observe past that point can only vouch for the handoff, not for the
+   host, and MUST NOT describe the result as end-to-end delivery.
 6. **Credentials MUST be stored outside the command line** — a config file with
    restrictive permissions, not process arguments visible to every process on the
    machine.

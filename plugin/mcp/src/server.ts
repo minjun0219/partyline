@@ -159,6 +159,9 @@ server.registerTool(
       lines.push(
         `channel ${seat.channel_id} (${seat.channel_name || "unnamed"}) as "${seat.display_name}" via ${seat.relay_url}: ` +
           `${connection.status}, injected ${connection.injected}, cursor ${seat.last_injected_seq}` +
+          (connection.status === "connected" && connection.lastFrameAt !== null
+            ? `, last frame ${Math.round((Date.now() - connection.lastFrameAt) / 1000)}s ago (relay pings every 30s)`
+            : "") +
           (connection.stopReason ? ` — ${connection.stopReason}` : "") +
           (connection.lastError ? ` — last error: ${connection.lastError}` : ""),
       );

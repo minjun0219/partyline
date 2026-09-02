@@ -12,6 +12,7 @@ import {
   type Seat,
 } from "../src/config.ts";
 import { formatInviteUrl, parseInviteUrl } from "../src/invite.ts";
+import { ChannelConnection } from "../src/receive.ts";
 import { buildWireLine, formatInjection } from "../src/session.ts";
 
 let dir: string | null = null;
@@ -162,5 +163,55 @@ describe("injection text", () => {
     expect(formatInjection({ ...envelope, reply_to: "x_prev" }, "release")).toContain(
       "id x_abc · reply_to x_prev\n\n",
     );
+  });
+});
+
+describe("stream watchdog", () => {
+  it("drops a stream that stops sending frames and reconnects", async () => {
+    const { WebSocketServer } = await import("ws");
+    // A relay that accepts the stream and then never pings (SPEC.md §6 says
+    // it must, every 30 s) — the client has to notice on its own.
+    const wss = new WebSocketServer({ port: 0 });
+    await new Promise<void>((resolve) => wss.on("listening", resolve));
+    const { port } = wss.address() as { port: number };
+    let connections = 0;
+    wss.on("connection", () => {
+      connections += 1;
+    });
+
+    const notes: string[] = [];
+    const connection = new ChannelConnection({
+      relayUrl: `http://127.0.0.1:${port}`,
+      seat: {
+        relay_url: `http://127.0.0.1:${port}`,
+        channel_id: "c_1",
+        channel_name: "",
+        party_id: "p_1",
+        party_token: "t",
+        display_name: "me",
+        last_injected_seq: 0,
+      },
+      persistSeat: () => {},
+      inject: async () => {},
+      note: (t) => notes.push(t),
+      staleAfterMs: 200,
+      watchdogTickMs: 50,
+    });
+    connection.start();
+    try {
+      // /v1/channels/c_1/stream — the server above accepts any path
+      await new Promise((r) => setTimeout(r, 100));
+      expect(connection.status).toBe("connected");
+      expect(connections).toBe(1);
+      await new Promise((r) => setTimeout(r, 400));
+      expect(connection.lastError).toMatch(/silent for \ds — presumed dead/);
+      expect(connection.status).toBe("backoff");
+      // First backoff is 1 s; the silent relay then gets a fresh stream.
+      await new Promise((r) => setTimeout(r, 1200));
+      expect(connections).toBe(2);
+    } finally {
+      connection.stop();
+      wss.close();
+    }
   });
 });
