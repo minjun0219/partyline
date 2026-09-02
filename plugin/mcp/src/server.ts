@@ -402,6 +402,7 @@ server.registerTool(
         entry.seat.channel_id,
         entry.seat.party_token,
       );
+      entry.connection.nudge();
       return text(formatPeers(you, parties));
     } catch (err) {
       return failure(describeError(err));
@@ -434,6 +435,7 @@ server.registerTool(
         body,
         reply_to,
       );
+      entry.connection.nudge();
       const liveness = result.recipient.online
         ? "online"
         : `OFFLINE — last seen ${result.recipient.last_seen_at}; they get it when they return`;

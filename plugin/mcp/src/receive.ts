@@ -92,6 +92,19 @@ export class ChannelConnection {
     this.ws = null;
   }
 
+  /**
+   * The relay just answered an HTTP call, so the network is back — if a
+   * reconnect is waiting out its backoff, run it now. Backoff is for a relay
+   * that keeps failing; after an outage it would otherwise hold the stream
+   * closed for up to a minute past the moment the link returned.
+   */
+  nudge(): void {
+    if (this.status !== "backoff" || this.reconnectTimer === null) return;
+    clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+    this.connect();
+  }
+
   private startWatchdog(ws: WebSocket): void {
     this.stopWatchdog();
     const staleAfterMs = this.deps.staleAfterMs ?? STALE_AFTER_MS;
@@ -196,7 +209,10 @@ export class ChannelConnection {
     this.attempts += 1;
     const delay = this.backoffMs;
     this.backoffMs = Math.min(this.backoffMs * 2, BACKOFF_MAX_MS);
-    this.reconnectTimer = setTimeout(() => this.connect(), delay);
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      this.connect();
+    }, delay);
   }
 
   private async handleMessage(ws: WebSocket, envelope: MessageEnvelope): Promise<void> {

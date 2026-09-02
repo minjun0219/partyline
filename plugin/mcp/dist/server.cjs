@@ -25228,6 +25228,18 @@ var ChannelConnection = class {
     this.ws?.close(1e3, "client stopped");
     this.ws = null;
   }
+  /**
+   * The relay just answered an HTTP call, so the network is back — if a
+   * reconnect is waiting out its backoff, run it now. Backoff is for a relay
+   * that keeps failing; after an outage it would otherwise hold the stream
+   * closed for up to a minute past the moment the link returned.
+   */
+  nudge() {
+    if (this.status !== "backoff" || this.reconnectTimer === null) return;
+    clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+    this.connect();
+  }
   startWatchdog(ws) {
     this.stopWatchdog();
     const staleAfterMs = this.deps.staleAfterMs ?? STALE_AFTER_MS;
@@ -25320,7 +25332,10 @@ var ChannelConnection = class {
     this.attempts += 1;
     const delay = this.backoffMs;
     this.backoffMs = Math.min(this.backoffMs * 2, BACKOFF_MAX_MS);
-    this.reconnectTimer = setTimeout(() => this.connect(), delay);
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      this.connect();
+    }, delay);
   }
   async handleMessage(ws, envelope) {
     const { seat } = this.deps;
@@ -25848,6 +25863,7 @@ server.registerTool(
         entry.seat.channel_id,
         entry.seat.party_token
       );
+      entry.connection.nudge();
       return text(formatPeers(you, parties));
     } catch (err) {
       return failure(describeError(err));
@@ -25878,6 +25894,7 @@ server.registerTool(
         body,
         reply_to
       );
+      entry.connection.nudge();
       const liveness = result.recipient.online ? "online" : `OFFLINE \u2014 last seen ${result.recipient.last_seen_at}; they get it when they return`;
       return text(
         `sent ${result.message_id} to ${result.recipient.display_name} (${liveness}). Delivery to their inbox is confirmed; delivery to their attention is not \u2014 ask for a reply if it matters.`

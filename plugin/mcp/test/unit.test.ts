@@ -247,4 +247,52 @@ describe("stream watchdog", () => {
       wss.close();
     }
   });
+
+  it("reconnects at once when nudged during backoff", async () => {
+    const { WebSocketServer } = await import("ws");
+    // A relay that refuses the first stream — an outage — then accepts.
+    let refuse = true;
+    const wss = new WebSocketServer({
+      port: 0,
+      verifyClient: (_info: unknown, cb: (ok: boolean, code?: number) => void) => cb(!refuse, 503),
+    });
+    await new Promise<void>((resolve) => wss.on("listening", resolve));
+    const { port } = wss.address() as { port: number };
+    let connections = 0;
+    wss.on("connection", () => {
+      connections += 1;
+    });
+
+    const connection = new ChannelConnection({
+      relayUrl: `http://127.0.0.1:${port}`,
+      seat: {
+        relay_url: `http://127.0.0.1:${port}`,
+        channel_id: "c_1",
+        channel_name: "",
+        party_id: "p_1",
+        party_token: "t",
+        display_name: "me",
+        last_injected_seq: 0,
+      },
+      persistSeat: () => {},
+      inject: async () => {},
+      note: () => {},
+    });
+    connection.start();
+    try {
+      await new Promise((r) => setTimeout(r, 200));
+      expect(connection.status).toBe("backoff");
+      expect(connections).toBe(0);
+      // The link is back (some HTTP call to the relay succeeded). Without the
+      // nudge the stream would wait out the backoff timer.
+      refuse = false;
+      connection.nudge();
+      await new Promise((r) => setTimeout(r, 200));
+      expect(connection.status).toBe("connected");
+      expect(connections).toBe(1);
+    } finally {
+      connection.stop();
+      wss.close();
+    }
+  });
 });
