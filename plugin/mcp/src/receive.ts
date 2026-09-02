@@ -53,6 +53,15 @@ export class ChannelConnection {
   lastErrorAt: number | null = null;
   /** Epoch ms the current stream opened; null while not connected. */
   connectedAt: number | null = null;
+  /**
+   * Epoch ms the last stream was lost, with the cause; cleared on open.
+   * lastError moves with every failed reconnect, so on its own it dates the
+   * latest attempt, not the outage — this keeps the outage's start.
+   */
+  downSince: number | null = null;
+  downCause: string | null = null;
+  /** Reconnect attempts since the stream was lost; reset on open. */
+  attempts = 0;
   /** Streams opened over this connection's life — 1 is the first, more means reconnects. */
   streams = 0;
   /** Set when the connection will not come back without user action. */
@@ -118,6 +127,9 @@ export class ChannelConnection {
       this.lastFrameAt = Date.now();
       this.connectedAt = this.lastFrameAt;
       this.streams += 1;
+      this.downSince = null;
+      this.downCause = null;
+      this.attempts = 0;
       this.startWatchdog(ws);
     });
     ws.on("message", (raw) => {
@@ -175,8 +187,13 @@ export class ChannelConnection {
   private scheduleReconnect(cause: string): void {
     this.status = "backoff";
     this.fail(cause);
+    if (this.connectedAt !== null) {
+      this.downSince = Date.now();
+      this.downCause = cause;
+    }
     this.connectedAt = null;
     this.ws = null;
+    this.attempts += 1;
     const delay = this.backoffMs;
     this.backoffMs = Math.min(this.backoffMs * 2, BACKOFF_MAX_MS);
     this.reconnectTimer = setTimeout(() => this.connect(), delay);

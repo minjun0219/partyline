@@ -232,10 +232,16 @@ describe("stream watchdog", () => {
       // The outage is dated, so status can say when — not just that — it broke.
       expect(connection.lastErrorAt).toBeGreaterThanOrEqual(openedAt as number);
       expect(connection.connectedAt).toBeNull();
+      expect(connection.downSince).toBe(connection.lastErrorAt);
+      expect(connection.downCause).toBe(connection.lastError);
+      expect(connection.attempts).toBe(1);
       // First backoff is 1 s; the silent relay then gets a fresh stream.
       await new Promise((r) => setTimeout(r, 1200));
       expect(connections).toBe(2);
       expect(connection.streams).toBe(2);
+      // The silent relay may have gone stale again by now; without the reset
+      // on open the count would carry over from the first outage.
+      expect(connection.attempts).toBeLessThanOrEqual(1);
     } finally {
       connection.stop();
       wss.close();

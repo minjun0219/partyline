@@ -211,6 +211,9 @@ server.registerTool(
           (connection.connectedAt !== null
             ? `, stream #${connection.streams} open since ${clock(connection.connectedAt)} (${ago(connection.connectedAt)})`
             : "") +
+          (connection.downSince !== null
+            ? `, down since ${clock(connection.downSince)} (${ago(connection.downSince)}): ${connection.downCause}; reconnect attempt #${connection.attempts} pending`
+            : "") +
           (connection.stopReason ? ` — ${connection.stopReason}` : "") +
           (connection.lastError && connection.lastErrorAt !== null
             ? ` — last error at ${clock(connection.lastErrorAt)} (${ago(connection.lastErrorAt)}): ${connection.lastError}`
