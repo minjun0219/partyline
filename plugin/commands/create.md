@@ -16,6 +16,11 @@ session a name for the channel, a `display_name` you choose from context (short,
 enough — the project or the machine's role). The tool creates, joins, and prints an
 invite URL for the other machine.
 
+A `401` means the relay is closed: creating there needs its relay key, which the user
+gets from the operator and sets as `relay_key` beside `relay_url` in their config (or
+`PARTYLINE_RELAY_KEY`). Never ask for the key in chat or pass it as an argument — the
+client sends the configured key only to the configured relay. Joining needs no key.
+
 Then hand the user the `/partyline:join …` line from the result verbatim, on its own
 line, with `<their-name>` left for the other side to fill — and nothing else that looks
 like a credential. That line carries the relay; the other side pastes it and needs no

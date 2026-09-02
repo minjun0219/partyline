@@ -40,7 +40,10 @@ own choosing — there is no default:
 
 (or set `relay_url` once in `~/.config/partyline/config.json` /
 `PARTYLINE_RELAY_URL` and leave it off; `PARTYLINE_CONFIG_DIR` moves the
-directory. That is all the configuration there is — the relay has no
+directory. If the operator has closed the relay, add the key they gave
+you as `relay_key` next to it, or `PARTYLINE_RELAY_KEY` — it is used only
+to create channels there and is never sent to a relay named on the
+command line. That is all the configuration there is — the relay has no
 accounts.) The command creates the channel, seats this session in it, and
 prints an invite URL. Hand that URL to the other machine out of band; there
 it joins with nothing else set up:

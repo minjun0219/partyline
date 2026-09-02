@@ -38,11 +38,13 @@ export interface InviteInfo {
 export async function createChannel(
   relayUrl: string,
   name: string,
+  relayKey: string | null = null,
 ): Promise<{ channel_id: string; name: string; invite: InviteInfo }> {
   // Unauthenticated by design — the capability chain starts at the invite.
+  // A closed relay (SPEC.md §8) wants its key here, and only here.
   return request(relayUrl, "/v1/channels", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: relayKey ? bearer(relayKey) : { "Content-Type": "application/json" },
     body: JSON.stringify({ name }),
   });
 }

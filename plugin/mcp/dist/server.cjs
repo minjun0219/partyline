@@ -25123,10 +25123,22 @@ function loadConfig(env = process.env) {
   } catch {
   }
   const fromEnv = env.PARTYLINE_RELAY_URL?.trim();
+  const keyFromEnv = env.PARTYLINE_RELAY_KEY?.trim();
   return {
     relay_url: fromEnv || (typeof raw.relay_url === "string" ? raw.relay_url : null),
+    relay_key: keyFromEnv || (typeof raw.relay_key === "string" && raw.relay_key ? raw.relay_key : null),
     machine_label: typeof raw.machine_label === "string" && raw.machine_label.trim() !== "" ? raw.machine_label : (0, import_node_os.hostname)()
   };
+}
+function trimSlash(url) {
+  return url.replace(/\/+$/, "");
+}
+function relayForCreate(config2, explicit) {
+  const url = explicit?.trim() || config2.relay_url;
+  if (!url) return null;
+  const configured = config2.relay_url ? trimSlash(config2.relay_url) : null;
+  const chosen = trimSlash(url);
+  return { url: chosen, key: chosen === configured ? config2.relay_key : null };
 }
 function writeRestricted(path, value, env) {
   (0, import_node_fs.mkdirSync)(configDir(env), { recursive: true });
@@ -25388,10 +25400,10 @@ async function request(relayUrl, path, init = {}) {
 function bearer(token) {
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 }
-async function createChannel(relayUrl, name) {
+async function createChannel(relayUrl, name, relayKey = null) {
   return request(relayUrl, "/v1/channels", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: relayKey ? bearer(relayKey) : { "Content-Type": "application/json" },
     body: JSON.stringify({ name })
   });
 }
@@ -25572,16 +25584,25 @@ function describeError(err) {
   if (err instanceof RelayError) return `relay error ${err.status} ${err.code}: ${err.message}`;
   return err instanceof Error ? err.message : String(err);
 }
-function requireRelayUrl(config2, explicit) {
-  const url = explicit?.trim() || config2.relay_url;
-  if (!url) {
+function requireRelay(config2, explicit) {
+  const chosen = relayForCreate(config2, explicit);
+  if (!chosen) {
     throw new RelayError(
       0,
       "unconfigured",
       `no relay to create the channel on. There is no default relay \u2014 pass relay_url, or set "relay_url" in ${configDir()}/config.json (or PARTYLINE_RELAY_URL) to a relay you trust; its operator can read and inject everything. Joining needs neither: an invite URL names its relay.`
     );
   }
-  return url.replace(/\/+$/, "");
+  return chosen;
+}
+function closedRelayHint(relayUrl, sentKey, config2) {
+  const head = `${relayUrl} is a closed relay: creating a channel there needs its relay key`;
+  const tail = "Joining an invite needs no key.";
+  if (sentKey) {
+    return `${head}, and the configured one was refused \u2014 ask the operator for the current key. ${tail}`;
+  }
+  const elsewhere = config2.relay_key ? " \u2014 the configured key is only ever sent to the configured relay_url, never to one passed as an argument" : "";
+  return `${head}. Set "relay_key" next to "relay_url" in ${configDir()}/config.json (or PARTYLINE_RELAY_KEY)${elsewhere}. ${tail}`;
 }
 async function joinWithInvite(invite, displayName, about, config2) {
   const result = await joinChannel(
@@ -25687,7 +25708,7 @@ server.registerTool(
     const config2 = loadConfig();
     const lines = [];
     lines.push(
-      `relay for creating channels: ${config2.relay_url ?? "not configured (no default; joining an invite needs none)"}`
+      `relay for creating channels: ${config2.relay_url ?? "not configured (no default; joining an invite needs none)"}` + (config2.relay_key ? " (relay key set \u2014 sent only there, never printed)" : "")
     );
     lines.push(`config dir: ${configDir()}`);
     lines.push(`machine label: ${config2.machine_label} (self-declared, shown to other parties)`);
@@ -25716,7 +25737,7 @@ server.registerTool(
 server.registerTool(
   "partyline_channel_create",
   {
-    description: "Create a private channel on a relay and take the first seat in it as this session. The relay comes from relay_url or the user's config \u2014 there is no default; choosing one means trusting its operator. Prints an invite URL to hand to the other machine out of band.",
+    description: "Create a private channel on a relay and take the first seat in it as this session. The relay comes from relay_url or the user's config \u2014 there is no default; choosing one means trusting its operator. A closed relay's key comes from config only, never an argument. Prints an invite URL to hand to the other machine out of band.",
     inputSchema: {
       name: external_exports.string().optional().describe("human label for the channel (not unique)"),
       display_name: external_exports.string().describe("this session's name in the channel (unique within it)"),
@@ -25727,8 +25748,16 @@ server.registerTool(
   async ({ name, display_name, about, relay_url }) => {
     try {
       const config2 = loadConfig();
-      const relayUrl = requireRelayUrl(config2, relay_url);
-      const created = await createChannel(relayUrl, name ?? "");
+      const { url: relayUrl, key } = requireRelay(config2, relay_url);
+      let created;
+      try {
+        created = await createChannel(relayUrl, name ?? "", key);
+      } catch (err) {
+        if (err instanceof RelayError && err.status === 401) {
+          throw new RelayError(401, err.code, closedRelayHint(relayUrl, key, config2));
+        }
+        throw err;
+      }
       const seat = await joinWithInvite(
         { relay_url: relayUrl, channel_id: created.channel_id, invite_token: created.invite.token },
         display_name,
