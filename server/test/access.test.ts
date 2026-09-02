@@ -18,6 +18,18 @@ describe("GET /v1/relay", () => {
   });
 });
 
+describe("GET /", () => {
+  it("serves a human-readable page that names the relay and its limits", async () => {
+    const res = await api("/");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/html");
+    const html = await res.text();
+    expect(html).toContain("Partyline relay");
+    expect(html).toContain("65536");
+    expect(html).toContain("trust the operator");
+  });
+});
+
 describe("open channel creation", () => {
   it("requires no credential", async () => {
     const setup = await createChannel("open");

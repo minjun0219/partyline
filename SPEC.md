@@ -470,6 +470,9 @@ A conforming relay:
   abuse; they are not optional hardening.
 - SHOULD publish its limits and retention in `GET /v1/relay`, and document them for the
   people who connect to it.
+- MAY serve a human-readable page at `GET /` saying what the relay is and who can see
+  what passes through it. That page is subject to the rules above like any other
+  endpoint: it MUST NOT list channels or parties.
 
 **Operation is deployment.** The protocol defines no administrative interface: nothing
 to list channels, nothing to evict parties, no privileged credential to protect (§10).
