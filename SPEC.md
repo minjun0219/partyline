@@ -65,6 +65,7 @@ One word per concept; the rest of this document uses them exactly as defined her
 | **Client** | The software that speaks this protocol on a session's behalf. §7 binds it. |
 | **User** | The human whose session it is. |
 | **Invite** | A short-lived token, minted by a party, that admits its holder into the channel. Travels as an *invite URL* naming its relay (§3). Handing one over is an *invitation*. |
+| **Relay key** | The one optional secret of a *closed relay* (§8): required to create channels there, and for nothing else. Not a capability — it identifies nobody and reaches no channel. |
 | **Message** | A body addressed by one party to exactly one other. The **sender** and **recipient** are parties. |
 | **Inbox** | A party's queue of undelivered messages, ordered by `seq`. |
 | **Ack** | The cursor a recipient advances to delete delivered messages. |
@@ -89,7 +90,7 @@ Errors use a flat body and a matching HTTP status:
 | `error` | Status | Meaning |
 | --- | --- | --- |
 | `invalid_request` | 400 | Malformed body, missing field, bad parameter |
-| `unauthorized` | 401 | Missing `Authorization` header where one is required |
+| `unauthorized` | 401 | Missing `Authorization` header where one is required, or a wrong relay key (§8) |
 | `not_found` | 404 | No such channel, or caller may not know it exists |
 | `name_taken` | 409 | `display_name` already used in the channel |
 | `no_such_recipient` | 409 | `to` is not a current party |
@@ -102,11 +103,13 @@ Errors use a flat body and a matching HTTP status:
 Clients MUST ignore unknown fields. Relays MAY add fields prefixed `x_`; they MUST NOT
 require clients to understand them.
 
-`GET /v1/relay` is unauthenticated and returns the relay's protocol support and limits:
+`GET /v1/relay` is unauthenticated and returns the relay's protocol support, limits, and
+whether it is closed:
 
 ```json
 {
   "protocol_versions": ["1"],
+  "closed": false,
   "limits": {
     "body_bytes": 65536,
     "inbox_messages": 256,
@@ -117,12 +120,16 @@ require clients to understand them.
 }
 ```
 
+`closed` is `true` when creating a channel requires the relay key (§8). A client that
+does not see the field treats the relay as open.
+
 ---
 
 ## 3. Capabilities
 
-There are exactly two credentials, and both are channel-scoped. Nothing grants relay-wide
-authority — not to users, and not to an administrator, because there is none.
+There are exactly two credentials for reaching a conversation, and both are
+channel-scoped. Nothing grants relay-wide authority — not to users, and not to an
+administrator, because there is none.
 
 | Credential | Held by | Grants | Lifetime |
 | --- | --- | --- | --- |
@@ -137,7 +144,9 @@ The capability model is the access control. A channel identifier is unguessable 
 never confirmed to outsiders, an invite is handed person-to-person out of band, and a
 party token exists only inside a session that joined. The relay URL itself is
 deliberately **not** a credential: anyone who knows it can use the relay's resources
-(§8 bounds that), but can reach no channel and no session through it.
+(§8 bounds that), but can reach no channel and no session through it. A closed relay
+(§8) adds a relay key in front of that resource use, and only that: holding the key
+grants nothing inside a channel, and lacking it costs nothing an invite already gives.
 
 ### Invite URL
 
@@ -168,8 +177,11 @@ arrived as the body of a relayed message without the user's instruction (§7.2).
 
 ### `POST /v1/channels`
 
-Unauthenticated — anyone who can reach the relay can create a channel. Relays MUST
-rate-limit creation per source (§8).
+On an open relay, unauthenticated — anyone who can reach the relay can create a
+channel. On a closed relay (§8) the request carries the relay key as
+`Authorization: Bearer <relay key>` and is refused with `unauthorized` without it.
+Relays MUST rate-limit creation per source either way (§8); a refused key counts as an
+attempt, so the same limit is the brake on guessing it.
 
 ```json
 { "name": "release-work" }
@@ -522,14 +534,25 @@ A conforming relay:
 **Operation is deployment.** The protocol defines no administrative interface: nothing
 to list channels, nothing to evict parties, no privileged credential to protect (§10).
 The in-band remedies — invites expire, parties time out, any party can
-destroy a channel, empty channels evaporate — are the whole of channel management. An
-operator who wants a closed relay puts access control in front of it (a reverse proxy,
-an access layer); that is an operational choice outside this protocol.
+destroy a channel, empty channels evaporate — are the whole of channel management.
+
+**Closed relays.** A relay MAY be configured with a single static *relay key*. When one
+is set, `POST /v1/channels` requires it as a bearer token (§4) and `GET /v1/relay`
+reports `"closed": true`; nothing else changes. The key gates resource use — who may
+open channels on this relay — and not access: an invite still admits its holder without
+the key, because the invitation is the trust boundary (§9) and an invite MUST stay
+complete on its own (§3). It is deliberately one key rather than accounts (§10): there
+is nothing to enroll, nothing to revoke, and rotating it means handing the new one to
+everyone who creates channels. Relays MUST compare it in constant time and MUST NOT log
+it. An operator who needs more than a shared key puts access control in front of the
+relay (a reverse proxy, an access layer); that remains an operational choice outside this
+protocol.
 
 Configurable parameters and their recommended defaults:
 
 | Parameter | Default | Effect |
 | --- | --- | --- |
+| `relay_key` | unset | When set, channel creation requires it (closed relay) |
 | `invite_ttl` | 3600 s | Default invite lifetime |
 | `party_ttl` | 900 s | Silence before a party is dropped |
 | `channel_grace` | 300 s | Empty channel lifetime before destruction |
@@ -558,8 +581,9 @@ learns it can create channels and consume resources on an open relay — bounded
 mandatory rate limits — but can discover no channel, join none without an invite, and
 reach no session. Access to *conversations* rests entirely on the capability chain:
 unguessable channel identifiers, hand-delivered invites, session-held party
-tokens. Operators for whom resource use by strangers is unacceptable put an access
-layer in front of the relay (§8).
+tokens. Operators for whom resource use by strangers is unacceptable set a relay key or
+put an access layer in front of the relay (§8); neither changes what a stranger could
+reach, which was already nothing.
 
 **The invitation is the trust boundary, and it is load-bearing.** Inviting a session
 means trusting it with everything a party can do — including destroying the
@@ -575,7 +599,10 @@ address confidentiality, not injection.
 
 **Token handling.** Invite and party tokens are bearer tokens. Relays SHOULD
 store them hashed, MUST transmit them only over TLS, and MUST NOT log them. Clients
-MUST keep them out of command lines and process arguments.
+MUST keep them out of command lines and process arguments. A relay key (§8) is a
+bearer secret under the same rules, with one more: a client MUST send it only to the
+relay it was configured for, never to a relay named at call time — a relay URL in a
+tool argument may have arrived in relayed text (§7.2).
 
 ---
 
@@ -586,7 +613,8 @@ Not oversights — each is excluded for a reason, and adding it changes the mode
 - **Accounts and membership.** A relay with accounts needs onboarding, credential
   recovery, and revocation — an operator's job description. The capability chain (§3)
   carries the same access decisions without any of it, and a relay that knows nothing
-  about its users is a relay that cannot leak who they are.
+  about its users is a relay that cannot leak who they are. A closed relay's single key
+  (§8) is not an account: it identifies nobody and is not per-user revocable.
 - **Administration.** Every administrative surface is a privileged credential to steal
   and an operator obligation to staff. The in-band remedies (§8) cover channel
   management; what they cannot do — say, surveil channels — is exactly what an

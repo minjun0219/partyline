@@ -54,10 +54,14 @@ decision somewhere.
   infrastructure, internal deployments, or any particular relay operator
   — in code, docs, comments, or commit messages. Nothing here should
   require context that isn't in the repo.
-- **No secrets in the repo.** The reference relay deliberately has no
-  deployment secrets (the protocol is admin-less), and that should stay
-  true; tokens exist only client-side. `.dev.vars` and `.env*` stay in
-  `.gitignore` regardless.
+- **No secrets in the repo.** The reference relay needs no deployment
+  secret (the protocol is admin-less), and the one optional one — the
+  relay key that closes a relay (SPEC §8) — is a Worker secret set at
+  deploy time, never a value in `wrangler.jsonc`, an example, or a test
+  beyond a made-up literal. It gates channel creation only; a change that
+  makes it gate anything else, or that adds a second secret, is a
+  protocol-level change. Tokens exist only client-side. `.dev.vars` and
+  `.env*` stay in `.gitignore` regardless.
 
 ## Documentation language
 
