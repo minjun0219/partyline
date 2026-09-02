@@ -28,6 +28,14 @@ describe("GET /", () => {
     expect(html).toContain("65536");
     expect(html).toContain("trust the operator");
   });
+
+  it("switches to Korean with ?lang=ko and back to English otherwise", async () => {
+    const ko = await (await api("/?lang=ko")).text();
+    expect(ko).toContain('<html lang="ko">');
+    expect(ko).toContain("운영자를 신뢰할 때만");
+    const unknown = await (await api("/?lang=fr")).text();
+    expect(unknown).toContain('<html lang="en">');
+  });
 });
 
 describe("open channel creation", () => {

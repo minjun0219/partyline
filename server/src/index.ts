@@ -9,7 +9,7 @@ import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { bearerFrom, ChannelDO } from "./channel.ts";
 import { ERROR_STATUS, type ErrorCode, errorBody } from "./errors.ts";
 import { RateLimitDO } from "./gate.ts";
-import { landingPage } from "./landing.ts";
+import { landingPage, pickLang } from "./landing.ts";
 import { LIMITS, PROTOCOL_VERSIONS } from "./protocol.ts";
 
 export { ChannelDO, RateLimitDO };
@@ -84,9 +84,9 @@ app.onError((err, c) => {
 
 // ---- relay metadata (SPEC.md §2, §8) --------------------------------------
 
-// For the person who opens the relay URL in a browser. Everything a program
-// needs is under /v1.
-app.get("/", (c) => c.html(landingPage()));
+// For the person who opens the relay URL in a browser (?lang=ko for Korean).
+// Everything a program needs is under /v1.
+app.get("/", (c) => c.html(landingPage(pickLang(c.req.query("lang")))));
 
 app.get("/v1/relay", (c) => c.json({ protocol_versions: PROTOCOL_VERSIONS, limits: LIMITS }));
 
