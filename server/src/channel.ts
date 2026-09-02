@@ -288,9 +288,24 @@ export class ChannelDO extends DurableObject<Record<string, never>> {
     return row ? (row as unknown as PartyRow) : null;
   }
 
+  /**
+   * A socket counts as presence only while it answers pings. A peer that
+   * vanished without closing (a pulled cable, a sleeping laptop) leaves a
+   * socket the runtime keeps listing well past close() — the TCP timeout,
+   * not the close handshake, decides when it goes — and an `online` read
+   * off that socket would be a false positive for minutes.
+   */
+  private hasLiveSocket(partyId: string, now = Date.now()): boolean {
+    return this.ctx.getWebSockets(partyId).some((ws) => {
+      const attachment = ws.deserializeAttachment() as { p: string; pong: number } | null;
+      return attachment !== null && now - attachment.pong <= PONG_DEADLINE_MS;
+    });
+  }
+
   private isOnline(row: PartyRow): boolean {
-    if (this.ctx.getWebSockets(row.id).length > 0) return true;
-    return Date.now() - row.last_seen_at <= PRESENCE_GRACE_MS;
+    const now = Date.now();
+    if (this.hasLiveSocket(row.id, now)) return true;
+    return now - row.last_seen_at <= PRESENCE_GRACE_MS;
   }
 
   private view(row: PartyRow): PartyView {
@@ -714,14 +729,14 @@ export class ChannelDO extends DurableObject<Record<string, never>> {
     this.sql.exec("DELETE FROM inbox WHERE sent_at < ?", now - MESSAGE_TTL_MS);
     this.sql.exec("DELETE FROM invites WHERE expires_at < ?", now);
 
-    // Drop parties that have gone silent (SPEC.md §4). An open socket
-    // counts as presence even if no frame has arrived lately.
+    // Drop parties that have gone silent (SPEC.md §4). A socket that still
+    // answers pings counts as presence; a zombie does not.
     const stale = this.sql
       .exec("SELECT id FROM parties WHERE last_seen_at < ?", now - PARTY_TTL_MS)
       .toArray();
     for (const row of stale) {
       const id = row.id as string;
-      if (this.ctx.getWebSockets(id).length > 0) continue;
+      if (this.hasLiveSocket(id, now)) continue;
       this.removeParty(id, WS_CLOSE.unauthorized, "dropped after inactivity");
     }
 

@@ -443,7 +443,11 @@ a no-op. WebSocket clients MAY use this endpoint instead of the `ack` frame.
 
 Contact through either transport — an open stream, a poll, or an ack — updates
 `last_seen_at` and keeps the party alive. There is no separate heartbeat: a
-party that is not listening is, correctly, not present.
+party that is not listening is, correctly, not present. `online` means the party is
+reachable now: a stream that is answering pings (§6), or contact recent enough that the
+relay still expects it back. A stream is not evidence by itself. A peer that vanishes
+without closing leaves a socket the relay's runtime may keep for minutes, and reporting
+that as `online` would tell senders their message is about to be read when it is not.
 
 Undelivered messages expire after `message_ttl` (86400 seconds RECOMMENDED). Inboxes are
 bounded (256 messages RECOMMENDED); sending to a full inbox is `inbox_full` (409).

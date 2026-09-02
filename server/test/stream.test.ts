@@ -1,9 +1,9 @@
 // SPEC.md §6 — the WebSocket transport: ready, backlog, live delivery, the
 // ack frame, and single-stream supersession.
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { WS_CLOSE } from "../src/protocol.ts";
-import { bearer, openStream, post, twoParty } from "./helpers.ts";
+import { api, bearer, openStream, post, twoParty } from "./helpers.ts";
 
 function send(channelId: string, token: string, to: string, body: string) {
   return post(`/v1/channels/${channelId}/messages`, { to, body }, bearer(token));
@@ -90,10 +90,38 @@ describe("WebSocket stream", () => {
 
   it("rejects a stream without a valid token, hiding existence", async () => {
     const { channelId } = await twoParty();
-    const { api } = await import("./helpers.ts");
     const res = await api(`/v1/channels/${channelId}/stream`, {
       headers: { Upgrade: "websocket", ...bearer("pt_wrong") },
     });
     expect(res.status).toBe(404);
+  });
+});
+
+describe("presence on a silent socket", () => {
+  it("stops reporting a party online once its socket stops answering pings", async () => {
+    const { channelId, a, b } = await twoParty();
+    const stream = await openStream(channelId, b.party_token);
+    await stream.frames.next(); // ready
+
+    const betaOnline = async () => {
+      const res = await api(`/v1/channels/${channelId}/parties`, {
+        headers: bearer(a.party_token),
+      });
+      const body = (await res.json()) as { parties: { display_name: string; online: boolean }[] };
+      return body.parties.find((p) => p.display_name === "beta")?.online;
+    };
+
+    expect(await betaOnline()).toBe(true);
+
+    // The socket is still open — nothing closed it — but the peer behind it
+    // has been gone for longer than both the pong deadline and the
+    // presence grace. A cable pulled at the far end looks exactly like this.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now() + 5 * 60 * 1000);
+    try {
+      expect(await betaOnline()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
