@@ -65,3 +65,8 @@ pnpm test
 
 테스트는 `@cloudflare/vitest-pool-workers` 로 Workers 런타임 안에서, 테스트별
 격리 스토리지로 돈다 — Cloudflare 계정이 필요 없다.
+
+빌드를 릴레이에 올리기 전에 실제 머신들로 두드려 보려면
+`wrangler deploy --env preview` 가 같은 코드를 저장소·시크릿이 독립된 두 번째
+Worker 로 배포한다. Durable Object 를 쓰는 Worker 에는 버전 프리뷰 URL 이 생기지
+않아서, 프로덕션의 프리뷰가 아니라 온전한 배포로 둔 것이다.

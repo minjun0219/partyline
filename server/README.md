@@ -68,3 +68,9 @@ pnpm test
 
 Tests run inside the Workers runtime via `@cloudflare/vitest-pool-workers`
 with isolated per-test storage — no Cloudflare account needed.
+
+To try a build against real machines before it replaces your relay,
+`wrangler deploy --env preview` deploys the same code as a second Worker
+with its own storage and secrets. Workers that use Durable Objects get no
+version preview URLs, which is why this is a full deployment rather than
+a preview of the production one.
