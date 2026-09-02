@@ -10,9 +10,9 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-08-01",
   // Attach a custom domain; keep workers.dev closed so the relay has one URL.
-  // Preview URLs stay on for trying a version before it goes live.
+  // (Version preview URLs are not available to Workers with Durable Objects,
+  // so there is no preview to enable — try a build locally with `pnpm dev`.)
   "workers_dev": false,
-  "preview_urls": true,
   "durable_objects": {
     "bindings": [
       { "name": "CHANNEL", "class_name": "ChannelDO" },
