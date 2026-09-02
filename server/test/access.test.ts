@@ -10,9 +10,11 @@ describe("GET /v1/relay", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       protocol_versions: string[];
+      closed: boolean;
       limits: Record<string, number>;
     };
     expect(body.protocol_versions).toContain("1");
+    expect(body.closed).toBe(false);
     expect(body.limits.body_bytes).toBe(65536);
     expect(body.limits.long_poll_max_seconds).toBe(60);
   });

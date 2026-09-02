@@ -1,8 +1,11 @@
 {
   // Reference relay for the Partyline protocol. Operating it is deploying it:
   //   wrangler deploy
-  // There are no secrets to configure — the relay is admin-less by design
-  // (SPEC.md §8). To run a closed relay, put an access layer in front.
+  // Nothing to configure for an open relay — it is admin-less by design
+  // (SPEC.md §8). To close it, set the one optional secret and channel
+  // creation requires it as a bearer token (invites keep working without):
+  //   wrangler secret put RELAY_KEY
+  // Never put the key in this file; locally it goes in .dev.vars (gitignored).
   "name": "partyline",
   "main": "src/index.ts",
   "compatibility_date": "2026-08-01",
