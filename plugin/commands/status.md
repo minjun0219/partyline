@@ -28,7 +28,10 @@ Call `partyline_status` and read it against these expectations:
 - `stopped — …`: it will not come back by itself. The reason says why — another
   process took the seat (4409), the credential died (4401), the channel is gone
   (4404). Follow the reason; usually `/partyline:join` again.
-- `injected N`: how many messages this session has taken from the relay. It counts
-  what was written to the session's socket, which is where this client's view ends.
+- `injected N`: how many messages this MCP server has taken from the relay since it
+  started — it resets with the server. `cursor` is the persistent one (the highest
+  sequence ever injected on this seat), so count across restarts by `cursor`. Both
+  count what was written to the session's socket, which is where this client's view
+  ends.
 - The relay line at the top is only for creating channels. `not configured` there is
   fine for a session that only joins.
