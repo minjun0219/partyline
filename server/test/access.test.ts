@@ -27,6 +27,7 @@ describe("GET /", () => {
     expect(html).toContain("Partyline relay");
     expect(html).toContain("65536");
     expect(html).toContain("trust the operator");
+    expect(html).toContain("github.com/minjun0219/partyline");
   });
 
   it("switches to Korean with ?lang=ko and back to English otherwise", async () => {

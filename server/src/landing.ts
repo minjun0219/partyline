@@ -1,13 +1,19 @@
-// The one page on the relay meant for a person: someone handed a relay URL
-// opens it in a browser and needs to learn what it is and what it can see.
-// Static, self-contained, and shows nothing about channels — the relay has
-// no interface that lists them, and this page is not the place to start one.
+// The page at the relay's root, for the person who opens the URL in a
+// browser. It introduces the project — the reference relay runs it, so this
+// is where a reader learns what Partyline is and what the relay in front of
+// them can see. Static, self-contained, and it shows nothing about channels:
+// the relay has no interface that lists them, and this page does not start one.
 //
 // English is canonical; the Korean text is a mirror, selected with ?lang=ko.
 
 import { LIMITS, PROTOCOL_VERSIONS } from "./protocol.ts";
 
-const PROTOCOL_URL = "https://github.com/minjun0219/partyline";
+const PROJECT_URL = "https://github.com/minjun0219/partyline";
+const AUTHOR = {
+  name: "Minjun Kim",
+  github: "https://github.com/minjun0219",
+  site: "https://minjun.kim",
+};
 
 export type Lang = "en" | "ko";
 
@@ -20,6 +26,7 @@ type LimitKey = keyof typeof LIMITS;
 interface Copy {
   title: string;
   intro: string;
+  premise: string;
   warning: string;
   usingHead: string;
   using: string;
@@ -28,26 +35,31 @@ interface Copy {
   limits: Record<LimitKey, string>;
   units: Record<LimitKey, string>;
   machineReadable: string;
-  protocolLink: string;
+  projectLink: string;
+  by: string;
   switchLabel: string;
 }
 
 const COPY: Record<Lang, Copy> = {
   en: {
-    title: "This is a Partyline relay",
+    title: "This relay runs Partyline",
     intro:
-      "It carries short text messages between AI coding sessions on different machines. " +
-      "Sessions join a channel with an invite, address messages to one another, and the " +
-      "relay holds each message only until its recipient acknowledges it.",
+      "Partyline carries short text messages between AI coding sessions on different " +
+      "machines. Sessions join a channel with an invite, address messages to one another, " +
+      "and the relay holds each message only until its recipient acknowledges it.",
+    premise:
+      "Everyone runs their own relay. The protocol has no accounts and no administrator: " +
+      "the only credentials are an invite and the per-channel token it yields, and any " +
+      "party can destroy the channel it is in.",
     warning:
       "Whoever operates this relay can read every message that passes through it and can " +
       "inject text into any session connected to it. Point a client here only if you trust " +
       "the operator.",
     usingHead: "Using it",
     using:
-      "Configure your Partyline client with this relay's URL. Nothing happens on its own: a " +
-      "session joins a channel only when you tell it to, with an invite from a channel that " +
-      "already exists.",
+      "Install the client plugin and configure it with this relay's URL. Nothing happens on " +
+      "its own: a session joins a channel only when you tell it to, with an invite from a " +
+      "channel that already exists.",
     servesHead: "What this relay serves",
     versions: "protocol versions",
     limits: {
@@ -66,23 +78,27 @@ const COPY: Record<Lang, Copy> = {
     },
     machineReadable:
       "The same numbers are machine-readable at <code>GET /v1/relay</code>. There is no " +
-      "interface that lists channels or parties, for anyone — the protocol has no administrator.",
-    protocolLink: "Protocol, reference relay, and client",
+      "interface that lists channels or parties, for anyone.",
+    projectLink: "Protocol, reference relay, and client plugin",
+    by: "a project by",
     switchLabel: "한국어",
   },
   ko: {
-    title: "이것은 Partyline 릴레이입니다",
+    title: "이 릴레이는 Partyline 을 돌리고 있습니다",
     intro:
-      "서로 다른 머신에서 돌아가는 AI 코딩 세션 사이에 짧은 텍스트 메시지를 전달합니다. " +
-      "세션은 초대로 채널에 참여하고, 메시지는 상대를 지정해 보내며, 릴레이는 수신자가 " +
-      "확인할 때까지만 메시지를 보관합니다.",
+      "Partyline 은 서로 다른 머신에서 돌아가는 AI 코딩 세션 사이에 짧은 텍스트 메시지를 " +
+      "전달합니다. 세션은 초대로 채널에 참여하고, 메시지는 상대를 지정해 보내며, 릴레이는 " +
+      "수신자가 확인할 때까지만 메시지를 보관합니다.",
+    premise:
+      "릴레이는 각자 띄웁니다. 프로토콜에는 계정도 관리자도 없습니다. 자격은 초대와 그것이 " +
+      "만들어 주는 채널 단위 토큰뿐이고, 어느 party 든 자기가 속한 채널을 없앨 수 있습니다.",
     warning:
       "이 릴레이의 운영자는 지나가는 모든 메시지를 읽을 수 있고, 연결된 어느 세션에든 " +
       "텍스트를 주입할 수 있습니다. 운영자를 신뢰할 때만 클라이언트를 여기에 연결하세요.",
     usingHead: "사용법",
     using:
-      "Partyline 클라이언트에 이 릴레이의 URL 을 설정하세요. 저절로 일어나는 일은 없습니다. " +
-      "세션은 이미 존재하는 채널의 초대를 받아, 사용자가 지시할 때만 채널에 참여합니다.",
+      "클라이언트 플러그인을 설치하고 이 릴레이의 URL 을 설정하세요. 저절로 일어나는 일은 " +
+      "없습니다. 세션은 이미 존재하는 채널의 초대를 받아, 사용자가 지시할 때만 채널에 참여합니다.",
     servesHead: "이 릴레이가 제공하는 것",
     versions: "프로토콜 버전",
     limits: {
@@ -101,8 +117,9 @@ const COPY: Record<Lang, Copy> = {
     },
     machineReadable:
       "같은 값을 <code>GET /v1/relay</code> 에서 기계가 읽을 수 있습니다. 채널이나 party 를 " +
-      "나열하는 인터페이스는 누구에게도 없습니다 — 이 프로토콜에는 관리자가 없습니다.",
-    protocolLink: "프로토콜, 참조 릴레이, 클라이언트",
+      "나열하는 인터페이스는 누구에게도 없습니다.",
+    projectLink: "프로토콜, 참조 릴레이, 클라이언트 플러그인",
+    by: "만든 사람",
     switchLabel: "English",
   },
 };
@@ -123,19 +140,24 @@ export function landingPage(lang: Lang): string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Partyline relay</title>
 <style>
-  body { font: 16px/1.5 system-ui, sans-serif; max-width: 40rem; margin: 3rem auto; padding: 0 1rem; color: #222; }
+  :root { color-scheme: light dark; }
+  body { font: 16px/1.5 system-ui, sans-serif; max-width: 40rem; margin: 3rem auto; padding: 0 1rem;
+         color: light-dark(#222, #ddd); background: light-dark(#fff, #151515); }
   h1 { font-size: 1.5rem; }
-  code { background: #f2f2f2; padding: 0 .25rem; }
+  a { color: light-dark(#0645ad, #8ab4f8); }
+  code { background: light-dark(#f2f2f2, #2a2a2a); padding: 0 .25rem; }
   table { border-collapse: collapse; }
   td { padding: .2rem 1rem .2rem 0; }
   .warn { border-left: 4px solid #c60; padding-left: 1rem; }
   .lang { float: right; font-size: .9rem; }
+  footer { margin-top: 3rem; font-size: .9rem; color: light-dark(#666, #999); }
 </style>
 </head>
 <body>
 <a class="lang" href="?lang=${other}" hreflang="${other}">${copy.switchLabel}</a>
 <h1>${copy.title}</h1>
 <p>${copy.intro}</p>
+<p>${copy.premise}</p>
 <p class="warn">${copy.warning}</p>
 <h2>${copy.usingHead}</h2>
 <p>${copy.using}</p>
@@ -145,7 +167,8 @@ export function landingPage(lang: Lang): string {
 ${limitRows(copy)}
 </table>
 <p>${copy.machineReadable}</p>
-<p><a href="${PROTOCOL_URL}">${copy.protocolLink}</a></p>
+<p><a href="${PROJECT_URL}">${copy.projectLink}</a></p>
+<footer>Partyline — ${copy.by} ${AUTHOR.name} · <a href="${AUTHOR.github}">GitHub</a> · <a href="${AUTHOR.site}">minjun.kim</a></footer>
 </body>
 </html>
 `;
