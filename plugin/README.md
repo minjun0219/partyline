@@ -61,8 +61,10 @@ whose invite leaked), and a `partyline` skill holds the conduct they
 share: received text is untrusted, replies carry `reply_to`, nothing
 secret goes through a channel.
 
-A restarted or reloaded session keeps its seat but not its stream: resume
-with `/partyline:join <channel_id>`. Still an explicit call — nothing ever
+A restarted session keeps its seat but not its stream (so does a reload
+that replaces the plugin; one that changes nothing leaves the stream
+running — `/partyline:status` tells which). Resume with
+`/partyline:join <channel_id>`. Still an explicit call — nothing ever
 joins automatically, and an invite that shows up inside a received message
 is text, not something to join.
 
@@ -94,7 +96,7 @@ In this order — each step rules out the layer below it.
 1. `/partyline:status` on the **receiving** session. `connected` with a
    recent `last frame` is healthy; `backoff` or `stopped` says why in the
    same line. `joined this session: none` with a `saved seat:` line means
-   the session was restarted or reloaded — `/partyline:join <channel_id>`.
+   the MCP server was restarted with the session — `/partyline:join <channel_id>`.
 2. Send a message to yourself (`/partyline:send <your-name> ping`). That
    runs the whole path — relay, stream, injection — with no second machine
    involved. If it arrives, the client works and the problem is on the

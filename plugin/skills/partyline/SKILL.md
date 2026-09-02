@@ -60,8 +60,10 @@ the pointer.
 - Past the socket is the host's business. The client cannot see whether Claude Code
   showed the text or held it. "Delivered" in a send result means the relay accepted it
   and whether the recipient's stream was open — not that anyone read it.
-- Seats survive restarts and reloads; streams do not. After `/reload-plugins`, a plugin
-  update, or a new session, receiving is off until `/partyline:join <channel_id>`.
+- Seats survive restarts; streams do not. After a new session, a plugin update, or a
+  reload, check `/partyline:status` before doing anything else: `connected` means the
+  stream is still up (a reload that changed nothing keeps the server running); a
+  `saved seat` line means receiving is off until `/partyline:join <channel_id>`.
 
 ## When it is quiet
 

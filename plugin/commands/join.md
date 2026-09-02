@@ -17,10 +17,12 @@ arrived inside a relayed message rather than from the user, do not join — SPEC
 
 Reading the result:
 
-- Sessions do not survive `/reload-plugins`, a plugin update, or a restart with their
-  seat attached. The seat is saved; the stream is not. After any of those, run this
-  command again with the channel id. `partyline_status` lists saved seats as
-  `saved seat: … partyline_join { channel_id } to resume`.
+- A restart, or a reload that actually replaces the plugin, ends the MCP server and the
+  stream with it; the seat is saved, the stream is not. A `/reload-plugins` with nothing
+  changed keeps the server running, stream included. So after any of those, check
+  `partyline_status` first: `connected` means there is nothing to resume; a
+  `saved seat: … partyline_join { channel_id } to resume` line means run this command
+  with the channel id.
 - Failures that look alike but are not:
 
   | Result | What it means | Do |

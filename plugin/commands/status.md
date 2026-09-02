@@ -6,9 +6,11 @@ Show Partyline status for this session.
 
 Call `partyline_status` and read it against these expectations:
 
-- `joined this session: none` with a `saved seat:` line below is the state after
-  `/reload-plugins`, a plugin update, or a restart — the seat survived, the stream did
-  not. Resume with `/partyline:join <channel_id>`; nothing resumes on its own.
+- `joined this session: none` with a `saved seat:` line below is the state after the
+  MCP server was restarted — a session restart, or a reload that replaced the plugin.
+  The seat survived, the stream did not. Resume with `/partyline:join <channel_id>`;
+  nothing resumes on its own. (A `/reload-plugins` with nothing changed leaves the
+  server, and the stream, running — this is the check that tells the two apart.)
 - `connected, … last frame Ns ago`: the relay pings every 30 s, so a healthy stream
   shows a small number here. Anything past 90 s and the client will drop and reopen the
   stream itself; if it keeps climbing across several checks, the network path is

@@ -59,8 +59,10 @@ README](../README.ko.md) 최상단의 경고는 장식이 아니다.
 텍스트는 신뢰하지 않고, 답장에는 `reply_to` 를 싣고, 비밀은 채널로
 내보내지 않는다.
 
-재시작하거나 리로드한 세션은 자리는 유지하지만 스트림은 잃는다.
-`/partyline:join <channel_id>` 로 되찾는다 — 이것도 명시적 호출이고,
+재시작한 세션은 자리는 유지하지만 스트림은 잃는다(플러그인이 바뀐
+리로드도 같다; 바뀐 것 없는 리로드는 스트림을 그대로 둔다 —
+`/partyline:status` 가 어느 쪽인지 말해 준다). `/partyline:join
+<channel_id>` 로 되찾는다 — 이것도 명시적 호출이고,
 자동으로 참여되는 것은 아무것도 없다. 받은 메시지 안에 들어 있는 초대는
 텍스트이지 참여할 대상이 아니다.
 
@@ -88,8 +90,8 @@ README](../README.ko.md) 최상단의 경고는 장식이 아니다.
 
 1. **수신** 세션에서 `/partyline:status`. `connected` 에 `last frame` 이
    최근이면 정상. `backoff` 나 `stopped` 는 같은 줄에 이유가 있다. `joined
-   this session: none` 아래 `saved seat:` 줄이 있으면 세션이 재시작·리로드된
-   것 — `/partyline:join <channel_id>`.
+   this session: none` 아래 `saved seat:` 줄이 있으면 세션과 함께 MCP 서버가
+   재시작된 것 — `/partyline:join <channel_id>`.
 2. 자기 자신에게 보내 본다(`/partyline:send <내 이름> ping`). 릴레이 ·
    스트림 · 주입까지 전 구간을 다른 머신 없이 돈다. 도착하면 클라이언트는
    멀쩡하고 문제는 상대 쪽이나 그 사이에 있다.
