@@ -25134,29 +25134,30 @@ function writeRestricted(path, value, env) {
 `);
   (0, import_node_fs.chmodSync)(path, 384);
 }
-function loadSeats(env = process.env) {
+function readRawSeats(env) {
   try {
     const raw = JSON.parse((0, import_node_fs.readFileSync)(seatsFile(env), "utf8"));
-    if (raw && typeof raw === "object") {
-      const legacyRelay = loadConfig(env).relay_url;
-      const seats = {};
-      for (const [id, seat] of Object.entries(raw)) {
-        if (typeof seat.relay_url === "string") seats[id] = seat;
-        else if (legacyRelay) seats[id] = { ...seat, relay_url: legacyRelay };
-      }
-      return seats;
-    }
+    if (raw && typeof raw === "object") return raw;
   } catch {
   }
   return {};
 }
+function loadSeats(env = process.env) {
+  const legacyRelay = loadConfig(env).relay_url;
+  const seats = {};
+  for (const [id, seat] of Object.entries(readRawSeats(env))) {
+    if (typeof seat.relay_url === "string") seats[id] = seat;
+    else if (legacyRelay) seats[id] = { ...seat, relay_url: legacyRelay };
+  }
+  return seats;
+}
 function saveSeat(seat, env = process.env) {
-  const seats = loadSeats(env);
+  const seats = readRawSeats(env);
   seats[seat.channel_id] = seat;
   writeRestricted(seatsFile(env), seats, env);
 }
 function dropSeat(channelId, env = process.env) {
-  const seats = loadSeats(env);
+  const seats = readRawSeats(env);
   delete seats[channelId];
   writeRestricted(seatsFile(env), seats, env);
 }

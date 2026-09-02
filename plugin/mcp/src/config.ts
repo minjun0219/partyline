@@ -78,36 +78,44 @@ export function saveConfig(config: PartylineConfig, env: NodeJS.ProcessEnv = pro
   writeRestricted(configFile(env), config, env);
 }
 
-export function loadSeats(env: NodeJS.ProcessEnv = process.env): Record<string, Seat> {
+/** The file as written — entries this version does not understand included. */
+function readRawSeats(env: NodeJS.ProcessEnv): Record<string, Partial<Seat>> {
   try {
-    const raw = JSON.parse(readFileSync(seatsFile(env), "utf8")) as Record<string, Partial<Seat>>;
-    if (raw && typeof raw === "object") {
-      // Seats written before invites carried a relay have no relay_url. Back
-      // then config held the only relay there was, so filling it in from
-      // config is a fact about that seat, not a default. Without config the
-      // seat cannot be resumed and is left out.
-      const legacyRelay = loadConfig(env).relay_url;
-      const seats: Record<string, Seat> = {};
-      for (const [id, seat] of Object.entries(raw)) {
-        if (typeof seat.relay_url === "string") seats[id] = seat as Seat;
-        else if (legacyRelay) seats[id] = { ...(seat as Seat), relay_url: legacyRelay };
-      }
-      return seats;
-    }
+    const raw = JSON.parse(readFileSync(seatsFile(env), "utf8")) as unknown;
+    if (raw && typeof raw === "object") return raw as Record<string, Partial<Seat>>;
   } catch {
     // none yet
   }
   return {};
 }
 
+/**
+ * The seats this version can resume. A read-side view: what it leaves out
+ * stays in the file (saveSeat/dropSeat merge into the raw file, never write
+ * this view back), so a stricter reader is not a destructive migration.
+ */
+export function loadSeats(env: NodeJS.ProcessEnv = process.env): Record<string, Seat> {
+  // Seats written before invites carried a relay have no relay_url. Back
+  // then config held the only relay there was, so filling it in from config
+  // is a fact about that seat, not a default. Without config the seat cannot
+  // be resumed and is left out of the view — not out of the file.
+  const legacyRelay = loadConfig(env).relay_url;
+  const seats: Record<string, Seat> = {};
+  for (const [id, seat] of Object.entries(readRawSeats(env))) {
+    if (typeof seat.relay_url === "string") seats[id] = seat as Seat;
+    else if (legacyRelay) seats[id] = { ...(seat as Seat), relay_url: legacyRelay };
+  }
+  return seats;
+}
+
 export function saveSeat(seat: Seat, env: NodeJS.ProcessEnv = process.env): void {
-  const seats = loadSeats(env);
+  const seats = readRawSeats(env);
   seats[seat.channel_id] = seat;
   writeRestricted(seatsFile(env), seats, env);
 }
 
 export function dropSeat(channelId: string, env: NodeJS.ProcessEnv = process.env): void {
-  const seats = loadSeats(env);
+  const seats = readRawSeats(env);
   delete seats[channelId];
   writeRestricted(seatsFile(env), seats, env);
 }

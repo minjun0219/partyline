@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, statSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -49,17 +49,18 @@ describe("config", () => {
 });
 
 describe("seats", () => {
+  const seat: Seat = {
+    relay_url: "https://relay.example",
+    channel_id: "c_1",
+    channel_name: "ops",
+    party_id: "p_1",
+    party_token: "pt_x",
+    display_name: "alpha",
+    last_injected_seq: 0,
+  };
+
   it("persists, updates, and drops seats per channel", () => {
     const env = tempEnv();
-    const seat = {
-      relay_url: "https://relay.example",
-      channel_id: "c_1",
-      channel_name: "ops",
-      party_id: "p_1",
-      party_token: "pt_x",
-      display_name: "alpha",
-      last_injected_seq: 0,
-    };
     saveSeat(seat, env);
     saveSeat({ ...seat, last_injected_seq: 7 }, env);
     expect(loadSeats(env).c_1?.last_injected_seq).toBe(7);
@@ -70,12 +71,8 @@ describe("seats", () => {
   it("fills a legacy seat's relay from config, and drops it without one", () => {
     const env = tempEnv();
     const { relay_url: _omitted, ...legacy } = {
-      relay_url: "https://relay.example",
+      ...seat,
       channel_id: "c_old",
-      channel_name: "ops",
-      party_id: "p_1",
-      party_token: "pt_x",
-      display_name: "alpha",
       last_injected_seq: 5,
     };
     saveSeat(legacy as unknown as Seat, env);
@@ -87,6 +84,22 @@ describe("seats", () => {
       relay_url: "https://relay.example",
       last_injected_seq: 5,
     });
+  });
+
+  it("keeps seats it cannot read when writing others (a filter is not a migration)", () => {
+    const env = tempEnv();
+    const { relay_url: _omitted, ...legacy } = seat;
+    saveSeat({ ...(legacy as Seat), channel_id: "c_old" }, env);
+    // unconfigured: c_old is invisible to loadSeats…
+    expect(loadSeats(env).c_old).toBeUndefined();
+    saveSeat({ ...seat, channel_id: "c_new" }, env);
+    dropSeat("c_new", env);
+    // …but a save and a drop of other seats must leave it in the file.
+    const raw = JSON.parse(readFileSync(join(configDir(env), "seats.json"), "utf8")) as Record<
+      string,
+      unknown
+    >;
+    expect(Object.keys(raw)).toEqual(["c_old"]);
   });
 });
 
