@@ -11,6 +11,7 @@ import {
   loadConfig,
   loadSeats,
   type PartylineConfig,
+  relayForCreate,
   type Seat,
   saveSeat,
 } from "./config.ts";
@@ -44,17 +45,37 @@ function describeError(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-/** The relay to create on: the explicit argument, else config. Never a default. */
-function requireRelayUrl(config: PartylineConfig, explicit: string | undefined): string {
-  const url = explicit?.trim() || config.relay_url;
-  if (!url) {
+/** The relay to create on (config.ts decides which, and whether the key goes along). */
+function requireRelay(
+  config: PartylineConfig,
+  explicit: string | undefined,
+): { url: string; key: string | null } {
+  const chosen = relayForCreate(config, explicit);
+  if (!chosen) {
     throw new RelayError(
       0,
       "unconfigured",
       `no relay to create the channel on. There is no default relay — pass relay_url, or set "relay_url" in ${configDir()}/config.json (or PARTYLINE_RELAY_URL) to a relay you trust; its operator can read and inject everything. Joining needs neither: an invite URL names its relay.`,
     );
   }
-  return url.replace(/\/+$/, "");
+  return chosen;
+}
+
+/** What a 401 on creation means to the user, given what was (not) sent. */
+function closedRelayHint(
+  relayUrl: string,
+  sentKey: string | null,
+  config: PartylineConfig,
+): string {
+  const head = `${relayUrl} is a closed relay: creating a channel there needs its relay key`;
+  const tail = "Joining an invite needs no key.";
+  if (sentKey) {
+    return `${head}, and the configured one was refused — ask the operator for the current key. ${tail}`;
+  }
+  const elsewhere = config.relay_key
+    ? " — the configured key is only ever sent to the configured relay_url, never to one passed as an argument"
+    : "";
+  return `${head}. Set "relay_key" next to "relay_url" in ${configDir()}/config.json (or PARTYLINE_RELAY_KEY)${elsewhere}. ${tail}`;
 }
 
 /** Consume an invite and persist the resulting seat; the caller starts receiving. */
@@ -190,7 +211,8 @@ server.registerTool(
     const config = loadConfig();
     const lines: string[] = [];
     lines.push(
-      `relay for creating channels: ${config.relay_url ?? "not configured (no default; joining an invite needs none)"}`,
+      `relay for creating channels: ${config.relay_url ?? "not configured (no default; joining an invite needs none)"}` +
+        (config.relay_key ? " (relay key set — sent only there, never printed)" : ""),
     );
     lines.push(`config dir: ${configDir()}`);
     lines.push(`machine label: ${config.machine_label} (self-declared, shown to other parties)`);
@@ -235,7 +257,7 @@ server.registerTool(
   "partyline_channel_create",
   {
     description:
-      "Create a private channel on a relay and take the first seat in it as this session. The relay comes from relay_url or the user's config — there is no default; choosing one means trusting its operator. Prints an invite URL to hand to the other machine out of band.",
+      "Create a private channel on a relay and take the first seat in it as this session. The relay comes from relay_url or the user's config — there is no default; choosing one means trusting its operator. A closed relay's key comes from config only, never an argument. Prints an invite URL to hand to the other machine out of band.",
     inputSchema: {
       name: z.string().optional().describe("human label for the channel (not unique)"),
       display_name: z.string().describe("this session's name in the channel (unique within it)"),
@@ -249,8 +271,16 @@ server.registerTool(
   async ({ name, display_name, about, relay_url }) => {
     try {
       const config = loadConfig();
-      const relayUrl = requireRelayUrl(config, relay_url);
-      const created = await relay.createChannel(relayUrl, name ?? "");
+      const { url: relayUrl, key } = requireRelay(config, relay_url);
+      let created: Awaited<ReturnType<typeof relay.createChannel>>;
+      try {
+        created = await relay.createChannel(relayUrl, name ?? "", key);
+      } catch (err) {
+        if (err instanceof RelayError && err.status === 401) {
+          throw new RelayError(401, err.code, closedRelayHint(relayUrl, key, config));
+        }
+        throw err;
+      }
       // The bootstrap invite is single use and it is ours; the invite printed
       // for others is a fresh one, minted with the seat we just took.
       const seat = await joinWithInvite(

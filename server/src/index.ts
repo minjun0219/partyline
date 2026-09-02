@@ -7,6 +7,7 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { bearerFrom, ChannelDO } from "./channel.ts";
+import { timingSafeEqual } from "./crypto.ts";
 import { ERROR_STATUS, type ErrorCode, errorBody } from "./errors.ts";
 import { RateLimitDO } from "./gate.ts";
 import { joinPage, landingPage, llmsTxt, pickLang, ROBOTS_TXT } from "./landing.ts";
@@ -17,6 +18,12 @@ export { ChannelDO, RateLimitDO };
 export interface Env {
   CHANNEL: DurableObjectNamespace<ChannelDO>;
   GATE: DurableObjectNamespace<RateLimitDO>;
+  /**
+   * The one optional secret (SPEC.md §8): set (`wrangler secret put RELAY_KEY`)
+   * and the relay is closed — creating a channel requires it. Unset or empty
+   * means open. It gates nothing else.
+   */
+  RELAY_KEY?: string;
 }
 
 type Ctx = Context<{ Bindings: Env }>;
@@ -37,6 +44,10 @@ function channel(env: Env, channelId: string) {
 
 function sourceOf(c: Ctx): string {
   return c.req.header("CF-Connecting-IP") ?? "unknown";
+}
+
+function relayKeyOf(env: Env): string | null {
+  return env.RELAY_KEY?.trim() || null;
 }
 
 function sendError(c: Ctx, code: ErrorCode, message: string) {
@@ -91,19 +102,39 @@ app.get("/", (c) => c.html(landingPage(pickLang(c.req.query("lang")))));
 app.get("/join", (c) => c.html(joinPage(pickLang(c.req.query("lang")))));
 app.get("/robots.txt", (c) => c.text(ROBOTS_TXT));
 // For an agent that was handed the relay URL and nothing else.
-app.get("/llms.txt", (c) => c.text(llmsTxt()));
+app.get("/llms.txt", (c) => c.text(llmsTxt(relayKeyOf(c.env) !== null)));
 
-app.get("/v1/relay", (c) => c.json({ protocol_versions: PROTOCOL_VERSIONS, limits: LIMITS }));
+app.get("/v1/relay", (c) =>
+  c.json({
+    protocol_versions: PROTOCOL_VERSIONS,
+    closed: relayKeyOf(c.env) !== null,
+    limits: LIMITS,
+  }),
+);
 
 // ---- channels (SPEC.md §4) ------------------------------------------------
 
 app.post("/v1/channels", async (c) => {
   // Unauthenticated by design — the capability model starts at the invite,
-  // not here. Creation is rate-limited per source instead.
+  // not here. Creation is rate-limited per source instead, and the limit is
+  // taken before the relay key is checked so that guessing a key on a closed
+  // relay is bounded by the same window (SPEC.md §4).
   if (
     !(await gate(c.env).admit(`create:${sourceOf(c)}`, CREATE_LIMIT.limit, CREATE_LIMIT.windowMs))
   ) {
     return sendError(c, "rate_limited", "too many channels created; wait for the window");
+  }
+  const relayKey = relayKeyOf(c.env);
+  if (relayKey !== null) {
+    const presented = bearerFrom(c.req.header("Authorization") ?? null);
+    // Hash-then-compare, so a wrong key of any length costs the same (SPEC.md §8).
+    if (!presented || !(await timingSafeEqual(presented, relayKey))) {
+      return sendError(
+        c,
+        "unauthorized",
+        "this relay is closed; creating a channel needs its relay key",
+      );
+    }
   }
   const body = await readJson(c);
   const name = asString(body?.name)?.trim() ?? "";

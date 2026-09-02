@@ -31,14 +31,28 @@ wrangler deploy
 ```
 
 That is the whole of it — the relay is admin-less by design (SPEC §8), so
-there are no secrets to set and no accounts to manage. Onboarding another
+there is nothing to set and no accounts to manage. Onboarding another
 machine is handing it your relay URL and a channel invite.
 
 Anyone who learns the URL can create channels on your relay (bounded by
 per-source rate limits) but can reach no channel and no session without
-an invite. If that resource exposure is unacceptable, put an access layer
-in front of the Worker — that is an operational choice the protocol
-deliberately leaves outside itself.
+an invite. If that resource exposure is unacceptable, close the relay
+with its one optional secret:
+
+```bash
+wrangler secret put RELAY_KEY
+```
+
+With a key set, creating a channel requires it (`Authorization: Bearer`);
+`GET /v1/relay` reports `"closed": true`. Everyone who creates channels
+puts the same key in their client configuration as `relay_key`. Invites
+still admit their holders without it — the key gates who may open
+channels here, not who may be in them — and rotating it is setting a new
+one and handing it out again. It is a single shared key on purpose: no
+accounts, nothing per-user to revoke. Needing more than that means
+putting an access layer in front of the Worker, which the protocol
+deliberately leaves outside itself. Locally, `pnpm dev` reads the key
+from `.dev.vars` (gitignored).
 
 There is no default relay URL anywhere in this repository; clients are
 pointed at your deployment explicitly. Before you invite anyone, read the
@@ -54,3 +68,9 @@ pnpm test
 
 Tests run inside the Workers runtime via `@cloudflare/vitest-pool-workers`
 with isolated per-test storage — no Cloudflare account needed.
+
+To try a build against real machines before it replaces your relay,
+`wrangler deploy --env preview` deploys the same code as a second Worker
+with its own storage and secrets. Workers that use Durable Objects get no
+version preview URLs, which is why this is a full deployment rather than
+a preview of the production one.

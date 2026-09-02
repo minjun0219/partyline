@@ -1,15 +1,16 @@
 {
   // Reference relay for the Partyline protocol. Operating it is deploying it:
   //   wrangler deploy
-  // There are no secrets to configure — the relay is admin-less by design
-  // (SPEC.md §8). To run a closed relay, put an access layer in front.
+  // Nothing to configure for an open relay — it is admin-less by design
+  // (SPEC.md §8). To close it, set the one optional secret and channel
+  // creation requires it as a bearer token (invites keep working without):
+  //   wrangler secret put RELAY_KEY
+  // Never put the key in this file; locally it goes in .dev.vars (gitignored).
   "name": "partyline",
   "main": "src/index.ts",
   "compatibility_date": "2026-08-01",
   // Attach a custom domain; keep workers.dev closed so the relay has one URL.
-  // Preview URLs stay on for trying a version before it goes live.
   "workers_dev": false,
-  "preview_urls": true,
   "durable_objects": {
     "bindings": [
       { "name": "CHANNEL", "class_name": "ChannelDO" },
@@ -23,5 +24,23 @@
     "redact_query_string": false,
     "logs": { "enabled": true, "head_sampling_rate": 1, "persist": true, "invocation_logs": true },
     "traces": { "enabled": true, "persist": true, "head_sampling_rate": 1 },
+  },
+  "env": {
+    // A second, independent relay for trying a build before it goes live:
+    //   wrangler deploy --env preview
+    // Version preview URLs do not exist for Workers with Durable Objects, so
+    // this is a real deployment of a separate Worker (`partyline-preview`)
+    // with its own storage, its own domain, and its own secrets
+    // (`wrangler secret put RELAY_KEY --env preview`). Bindings are not
+    // inherited by environments, hence the repetition.
+    "preview": {
+      "durable_objects": {
+        "bindings": [
+          { "name": "CHANNEL", "class_name": "ChannelDO" },
+          { "name": "GATE", "class_name": "RateLimitDO" },
+        ],
+      },
+      "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ChannelDO", "RateLimitDO"] }],
+    },
   },
 }

@@ -39,7 +39,10 @@ README](../README.ko.md) 최상단의 경고는 장식이 아니다.
 
 (`~/.config/partyline/config.json` 이나 `PARTYLINE_RELAY_URL` 에 `relay_url`
 을 한 번 적어 두면 생략할 수 있다. `PARTYLINE_CONFIG_DIR` 는 디렉터리를
-옮긴다. 설정은 이게 전부다 — 릴레이에는 계정이 없다.) 이 커맨드는 채널을
+옮긴다. 운영자가 릴레이를 닫아 두었다면 받은 키를 그 옆에 `relay_key`
+로, 또는 `PARTYLINE_RELAY_KEY` 로 적는다 — 그 릴레이에 채널을 만들 때만
+쓰이고, 커맨드 라인에 적은 릴레이에는 절대 보내지 않는다. 설정은 이게
+전부다 — 릴레이에는 계정이 없다.) 이 커맨드는 채널을
 만들고, 이 세션을 거기 앉히고, 초대 URL 을 출력한다. 그 URL 을 다른 머신에
 별도 경로로 건네면, 그쪽은 아무 설정 없이 참여한다:
 
@@ -120,3 +123,15 @@ pnpm test          # 유닛 + 번들 스모크 + 참조 릴레이 상대 e2e
 e2e 테스트는 `../server` 의 참조 릴레이를 wrangler 로 띄우고 전체 스토리를
 돌린다: 채널 생성 → 초대로 참가자 둘 → 스트림 배달 → 중복 없는 재연결 →
 참가자 파괴.
+
+재설치 없이 라이브 세션에서 변경을 써 보려면, 저장소 루트에서 작업 트리의
+플러그인을 실어 Claude Code 를 띄운다:
+
+```bash
+claude --plugin-dir ./plugin
+```
+
+그 세션에서는 설치된 `partyline` 보다 이 사본이 우선한다. 고친 뒤에는
+`pnpm build`(`src/` 를 바꿨을 때)와 `/reload-plugins` — MCP 서버가 새 번들로
+다시 뜨므로 자리는 `/partyline:join <channel_id>` 로 다시 잡아야 하지만,
+세션은 그대로다.

@@ -14,6 +14,11 @@ export interface PartylineConfig {
    * relay (SPEC.md §3).
    */
   relay_url: string | null;
+  /**
+   * Key of a closed relay (SPEC.md §8), needed only to create channels.
+   * Paired with relay_url above and sent nowhere else (SPEC.md §9).
+   */
+  relay_key: string | null;
   /** Self-declared, shown in party lists (SPEC.md §4). */
   machine_label: string;
 }
@@ -59,13 +64,39 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): PartylineConfi
     // missing or unreadable — unconfigured
   }
   const fromEnv = env.PARTYLINE_RELAY_URL?.trim();
+  const keyFromEnv = env.PARTYLINE_RELAY_KEY?.trim();
+  const keyFromFile = typeof raw.relay_key === "string" ? raw.relay_key.trim() : "";
   return {
     relay_url: fromEnv || (typeof raw.relay_url === "string" ? raw.relay_url : null),
+    // The file's key belongs to the file's relay. When the environment points
+    // at a different relay, that key must not follow (SPEC.md §9).
+    relay_key: keyFromEnv || (fromEnv ? null : keyFromFile || null),
     machine_label:
       typeof raw.machine_label === "string" && raw.machine_label.trim() !== ""
         ? raw.machine_label
         : hostname(),
   };
+}
+
+function trimSlash(url: string): string {
+  return url.replace(/\/+$/, "");
+}
+
+/**
+ * The relay to create a channel on: the explicit argument, else config, never
+ * a default (null = unconfigured). The relay key travels only to the
+ * configured relay — a URL given at call time may have arrived in relayed
+ * text, and a key sent there is a key leaked (SPEC.md §9).
+ */
+export function relayForCreate(
+  config: PartylineConfig,
+  explicit: string | undefined,
+): { url: string; key: string | null } | null {
+  const url = explicit?.trim() || config.relay_url;
+  if (!url) return null;
+  const configured = config.relay_url ? trimSlash(config.relay_url) : null;
+  const chosen = trimSlash(url);
+  return { url: chosen, key: chosen === configured ? config.relay_key : null };
 }
 
 function writeRestricted(path: string, value: unknown, env: NodeJS.ProcessEnv): void {

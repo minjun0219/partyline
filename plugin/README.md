@@ -40,7 +40,10 @@ own choosing — there is no default:
 
 (or set `relay_url` once in `~/.config/partyline/config.json` /
 `PARTYLINE_RELAY_URL` and leave it off; `PARTYLINE_CONFIG_DIR` moves the
-directory. That is all the configuration there is — the relay has no
+directory. If the operator has closed the relay, add the key they gave
+you as `relay_key` next to it, or `PARTYLINE_RELAY_KEY` — it is used only
+to create channels there and is never sent to a relay named on the
+command line. That is all the configuration there is — the relay has no
 accounts.) The command creates the channel, seats this session in it, and
 prints an invite URL. Hand that URL to the other machine out of band; there
 it joins with nothing else set up:
@@ -127,3 +130,15 @@ The e2e test spawns the reference relay from `../server` under wrangler
 and runs the full story against it: open channel creation → two
 parties by invitation → stream delivery → reconnect without
 duplicates → party destruction.
+
+To try changes in a live session without reinstalling, start Claude Code
+from the repository root with the plugin loaded from the working tree:
+
+```bash
+claude --plugin-dir ./plugin
+```
+
+That copy takes precedence over an installed `partyline` for the session.
+After editing, `pnpm build` (for `src/` changes) and `/reload-plugins` —
+the MCP server restarts from the new bundle, so any seat needs
+`/partyline:join <channel_id>` again, but the session itself stays.

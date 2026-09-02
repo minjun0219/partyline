@@ -7,6 +7,7 @@ import {
   dropSeat,
   loadConfig,
   loadSeats,
+  relayForCreate,
   saveConfig,
   saveSeat,
   type Seat,
@@ -34,15 +35,53 @@ describe("config", () => {
 
   it("takes the relay from the environment or the file, never from code", () => {
     const env = tempEnv();
-    saveConfig({ relay_url: "https://relay.example", machine_label: "m" }, env);
+    saveConfig({ relay_url: "https://relay.example", relay_key: null, machine_label: "m" }, env);
     expect(loadConfig(env).relay_url).toBe("https://relay.example");
     env.PARTYLINE_RELAY_URL = "https://other.example";
     expect(loadConfig(env).relay_url).toBe("https://other.example");
   });
 
+  it("reads a relay key from the file or the environment, absent by default", () => {
+    const env = tempEnv();
+    expect(loadConfig(env).relay_key).toBeNull();
+    saveConfig(
+      { relay_url: "https://relay.example", relay_key: "rk_file\n", machine_label: "m" },
+      env,
+    );
+    expect(loadConfig(env).relay_key).toBe("rk_file");
+    env.PARTYLINE_RELAY_KEY = "rk_env";
+    expect(loadConfig(env).relay_key).toBe("rk_env");
+  });
+
+  it("does not carry the file's key to a relay named by the environment (SPEC.md §9)", () => {
+    const env = tempEnv();
+    saveConfig(
+      { relay_url: "https://relay.example", relay_key: "rk_file", machine_label: "m" },
+      env,
+    );
+    env.PARTYLINE_RELAY_URL = "https://other.example";
+    expect(loadConfig(env)).toMatchObject({ relay_url: "https://other.example", relay_key: null });
+    env.PARTYLINE_RELAY_KEY = "rk_other";
+    expect(loadConfig(env).relay_key).toBe("rk_other");
+  });
+
+  it("sends the relay key only to the configured relay (SPEC.md §9)", () => {
+    const config = { relay_url: "https://relay.example/", relay_key: "rk", machine_label: "m" };
+    expect(relayForCreate(config, undefined)).toEqual({ url: "https://relay.example", key: "rk" });
+    expect(relayForCreate(config, "https://relay.example")).toEqual({
+      url: "https://relay.example",
+      key: "rk",
+    });
+    expect(relayForCreate(config, "https://other.example")).toEqual({
+      url: "https://other.example",
+      key: null,
+    });
+    expect(relayForCreate({ ...config, relay_url: null }, undefined)).toBeNull();
+  });
+
   it("writes credential files with 0600 (SPEC.md §7.6)", () => {
     const env = tempEnv();
-    saveConfig({ relay_url: null, machine_label: "m" }, env);
+    saveConfig({ relay_url: null, relay_key: null, machine_label: "m" }, env);
     const mode = statSync(join(configDir(env), "config.json")).mode & 0o777;
     expect(mode).toBe(0o600);
   });
@@ -79,7 +118,7 @@ describe("seats", () => {
     // Before invites carried a relay, config held the only one — so this is
     // the seat's relay, not a guess. Without config there is nothing to fill.
     expect(loadSeats(env).c_old).toBeUndefined();
-    saveConfig({ relay_url: "https://relay.example", machine_label: "m" }, env);
+    saveConfig({ relay_url: "https://relay.example", relay_key: null, machine_label: "m" }, env);
     expect(loadSeats(env).c_old).toMatchObject({
       relay_url: "https://relay.example",
       last_injected_seq: 5,

@@ -81,7 +81,7 @@ async function until(check: () => boolean, what: string, timeoutMs = 10_000): Pr
 describe("client against the reference relay", () => {
   it("runs the whole story", async () => {
     // no membership, no secrets: create a channel and enter by invitation
-    saveConfig({ relay_url: RELAY, machine_label: "e2e-machine" }, env);
+    saveConfig({ relay_url: RELAY, relay_key: null, machine_label: "e2e-machine" }, env);
     loadConfig(env);
     const created = await relay.createChannel(RELAY, "e2e");
 

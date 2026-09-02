@@ -18,7 +18,9 @@ that has drifted from the spec is a bug in both.
   by spec section and double as a conformance suite.
 - `plugin/` — Claude Code plugin bundling the client as an MCP server
   (committed bundle at `plugin/mcp/dist/`; rebuild with `pnpm build` when
-  `plugin/mcp/src/` changes).
+  `plugin/mcp/src/` changes). To exercise changes in a live session,
+  start Claude Code with `claude --plugin-dir ./plugin` and use
+  `/reload-plugins` after rebuilding — no reinstall or restart.
 - `.claude-plugin/marketplace.json` — plugin distribution, see below.
 
 ## Principles
@@ -52,10 +54,14 @@ decision somewhere.
   infrastructure, internal deployments, or any particular relay operator
   — in code, docs, comments, or commit messages. Nothing here should
   require context that isn't in the repo.
-- **No secrets in the repo.** The reference relay deliberately has no
-  deployment secrets (the protocol is admin-less), and that should stay
-  true; tokens exist only client-side. `.dev.vars` and `.env*` stay in
-  `.gitignore` regardless.
+- **No secrets in the repo.** The reference relay needs no deployment
+  secret (the protocol is admin-less), and the one optional one — the
+  relay key that closes a relay (SPEC §8) — is a Worker secret set at
+  deploy time, never a value in `wrangler.jsonc`, an example, or a test
+  beyond a made-up literal. It gates channel creation only; a change that
+  makes it gate anything else, or that adds a second secret, is a
+  protocol-level change. Tokens exist only client-side. `.dev.vars` and
+  `.env*` stay in `.gitignore` regardless.
 
 ## Documentation language
 
