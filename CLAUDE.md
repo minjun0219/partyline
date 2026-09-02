@@ -18,7 +18,9 @@ that has drifted from the spec is a bug in both.
   by spec section and double as a conformance suite.
 - `plugin/` — Claude Code plugin bundling the client as an MCP server
   (committed bundle at `plugin/mcp/dist/`; rebuild with `pnpm build` when
-  `plugin/mcp/src/` changes).
+  `plugin/mcp/src/` changes). To exercise changes in a live session,
+  start Claude Code with `claude --plugin-dir ./plugin` and use
+  `/reload-plugins` after rebuilding — no reinstall or restart.
 - `.claude-plugin/marketplace.json` — plugin distribution, see below.
 
 ## Principles

@@ -120,3 +120,15 @@ pnpm test          # 유닛 + 번들 스모크 + 참조 릴레이 상대 e2e
 e2e 테스트는 `../server` 의 참조 릴레이를 wrangler 로 띄우고 전체 스토리를
 돌린다: 채널 생성 → 초대로 참가자 둘 → 스트림 배달 → 중복 없는 재연결 →
 참가자 파괴.
+
+재설치 없이 라이브 세션에서 변경을 써 보려면, 저장소 루트에서 작업 트리의
+플러그인을 실어 Claude Code 를 띄운다:
+
+```bash
+claude --plugin-dir ./plugin
+```
+
+그 세션에서는 설치된 `partyline` 보다 이 사본이 우선한다. 고친 뒤에는
+`pnpm build`(`src/` 를 바꿨을 때)와 `/reload-plugins` — MCP 서버가 새 번들로
+다시 뜨므로 자리는 `/partyline:join <channel_id>` 로 다시 잡아야 하지만,
+세션은 그대로다.

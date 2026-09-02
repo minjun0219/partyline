@@ -127,3 +127,15 @@ The e2e test spawns the reference relay from `../server` under wrangler
 and runs the full story against it: open channel creation → two
 parties by invitation → stream delivery → reconnect without
 duplicates → party destruction.
+
+To try changes in a live session without reinstalling, start Claude Code
+from the repository root with the plugin loaded from the working tree:
+
+```bash
+claude --plugin-dir ./plugin
+```
+
+That copy takes precedence over an installed `partyline` for the session.
+After editing, `pnpm build` (for `src/` changes) and `/reload-plugins` —
+the MCP server restarts from the new bundle, so any seat needs
+`/partyline:join <channel_id>` again, but the session itself stays.
