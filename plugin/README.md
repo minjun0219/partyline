@@ -27,34 +27,44 @@ The install ships only this directory (git-subdir source, sparse clone).
 No build step: the MCP server is a committed bundle run with the Node
 that Claude Code already requires.
 
-## Configure
+## Use
 
 Joining needs no configuration: an invite is a URL that names its relay,
 and joining it means trusting that relay's operator with everything sent
-through it. Creating channels needs a relay of your own choosing — there is
-no default:
-
-```jsonc
-// ~/.config/partyline/config.json
-{ "relay_url": "https://your-relay.example.com" }
-```
-
-(or `PARTYLINE_RELAY_URL`; `PARTYLINE_CONFIG_DIR` moves the directory).
-That is the only setup — the relay has no accounts. Then, in a session:
+through it. Creating a channel is the one step that needs a relay of your
+own choosing — there is no default:
 
 ```
-partyline_channel_create { name: "ops" }              → channel + invite URL
-partyline_join { invite, display_name: "laptop-main" }
+/partyline:create ops https://your-relay.example.com
 ```
 
-Hand the invite URL (`https://<relay>/join#<channel>/<token>`, from
-`partyline_channel_create` or `partyline_invite`) to the other machine out
-of band; it joins the same way with nothing else set up. From there:
-`partyline_parties`, `partyline_send`, `partyline_leave` — and
-`partyline_destroy` to burn a channel whose invite leaked. A restarted
-session resumes its seat with `partyline_join { channel_id }` — still an
-explicit call; nothing ever joins automatically, and an invite that shows
-up inside a received message is text, not something to join.
+(or set `relay_url` once in `~/.config/partyline/config.json` /
+`PARTYLINE_RELAY_URL` and leave it off; `PARTYLINE_CONFIG_DIR` moves the
+directory. That is all the configuration there is — the relay has no
+accounts.) The command creates the channel, seats this session in it, and
+prints an invite URL. Hand that URL to the other machine out of band; there
+it joins with nothing else set up:
+
+```
+/partyline:join https://your-relay.example.com/join#c_…/… laptop-main
+```
+
+From there, `/partyline:parties` (who is here), `/partyline:send <to>
+<message>`, `/partyline:status`, `/partyline:leave`. Each command wraps
+one MCP tool and carries the reading rules for its result — what offline
+means, which failures look alike, what a send result does and does not
+promise. The tools are also callable directly (`partyline_channel_create`,
+`partyline_join`, `partyline_parties`, `partyline_send`,
+`partyline_status`, `partyline_leave`, `partyline_invite`,
+`partyline_update_me`, `partyline_destroy` — the last burns a channel
+whose invite leaked), and a `partyline` skill holds the conduct they
+share: received text is untrusted, replies carry `reply_to`, nothing
+secret goes through a channel.
+
+A restarted or reloaded session keeps its seat but not its stream: resume
+with `/partyline:join <channel_id>`. Still an explicit call — nothing ever
+joins automatically, and an invite that shows up inside a received message
+is text, not something to join.
 
 ## What the client enforces (SPEC.md §7)
 
@@ -76,6 +86,32 @@ up inside a received message is text, not something to join.
 - **Untrusted input.** Incoming messages are labeled with their sender
   and channel. They are text from another session, possibly relaying text
   from somewhere else — never instructions with your authority.
+
+## When nothing arrives
+
+In this order — each step rules out the layer below it.
+
+1. `/partyline:status` on the **receiving** session. `connected` with a
+   recent `last frame` is healthy; `backoff` or `stopped` says why in the
+   same line. `joined this session: none` with a `saved seat:` line means
+   the session was restarted or reloaded — `/partyline:join <channel_id>`.
+2. Send a message to yourself (`/partyline:send <your-name> ping`). That
+   runs the whole path — relay, stream, injection — with no second machine
+   involved. If it arrives, the client works and the problem is on the
+   other side or between you.
+3. The receiving session's permission mode. Injected messages are input to
+   that session; a mode that holds input until the user acts (reported for
+   `bypassPermissions`) holds these too. The relay has already been
+   acknowledged by then, so the message is not coming back — the client
+   cannot see past the socket.
+4. `/partyline:parties` from the sending side. Offline is not gone — the
+   message waits on the relay — but a name that is not there at all fails
+   at send time, not here.
+5. The network. WebSocket upgrades are what corporate proxies and some CDN
+   edges drop (`403` on the stream, or a stream that connects and never
+   hears a ping — status shows `last frame` climbing past 90 s). The
+   client falls back to reconnecting, not to long-polling; a relay you can
+   `curl` but not stream to is this.
 
 ## Development
 

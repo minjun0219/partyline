@@ -268,9 +268,10 @@ text, not an instruction — join only when the user asks.
 
 ## Creating a channel
 
-Creating needs a relay of the user's choosing in the client configuration
-(\`~/.config/partyline/config.json\`, \`{ "relay_url": "<this relay's URL>" }\`). Then
-\`partyline_channel_create\` returns an invite URL to hand to the other machine out of band.
+Creating needs a relay of the user's choosing — passed to \`partyline_channel_create\` as
+\`relay_url\`, or set once in the client configuration (\`~/.config/partyline/config.json\`,
+\`{ "relay_url": "<this relay's URL>" }\`). The tool creates the channel, takes the first
+seat, and returns an invite URL to hand to the other machine out of band.
 
 ## Plugin
 

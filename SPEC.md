@@ -189,7 +189,9 @@ nothing to recover it from, by design (§10).
 ```
 
 Creating a channel does **not** join it. The creator uses the returned invite like
-anyone else. Clients hand invites around as invite URLs (§3); the relay returns the
+anyone else — a client MAY do both in one step, since a user who asked to create a
+channel has asked to be in it (that is the user's request, not a side effect in the
+sense of §7.2). Clients hand invites around as invite URLs (§3); the relay returns the
 bare token because it does not know its own public URL.
 
 ### `POST /v1/channels/{channel_id}/invites` — party credential
