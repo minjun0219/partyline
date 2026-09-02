@@ -67,7 +67,7 @@ describe("seats", () => {
     expect(loadSeats(env).c_1).toBeUndefined();
   });
 
-  it("drops seats that do not name their relay rather than guessing one", () => {
+  it("fills a legacy seat's relay from config, and drops it without one", () => {
     const env = tempEnv();
     const { relay_url: _omitted, ...legacy } = {
       relay_url: "https://relay.example",
@@ -76,10 +76,17 @@ describe("seats", () => {
       party_id: "p_1",
       party_token: "pt_x",
       display_name: "alpha",
-      last_injected_seq: 0,
+      last_injected_seq: 5,
     };
     saveSeat(legacy as unknown as Seat, env);
+    // Before invites carried a relay, config held the only one — so this is
+    // the seat's relay, not a guess. Without config there is nothing to fill.
     expect(loadSeats(env).c_old).toBeUndefined();
+    saveConfig({ relay_url: "https://relay.example", machine_label: "m" }, env);
+    expect(loadSeats(env).c_old).toMatchObject({
+      relay_url: "https://relay.example",
+      last_injected_seq: 5,
+    });
   });
 });
 

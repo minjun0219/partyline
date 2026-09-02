@@ -25,6 +25,7 @@ Reading the result:
 
   | Result | What it means | Do |
   | --- | --- | --- |
+  | `no saved seat for c_…` | local, before any network: this machine has no seat file entry for that channel — never joined here, left, or the seat was dropped | a fresh invite from someone inside; if a seat was expected, `partyline_status` should have listed it |
   | 404 / 410 with an invite | invite expired, used up, or unknown to that relay | ask for a fresh invite |
   | 404 / 410 resuming | the channel is gone, or the party timed out; the seat has been dropped | need a fresh invite from someone inside |
   | 401 | the party token no longer works | fresh invite |

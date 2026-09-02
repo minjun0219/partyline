@@ -82,11 +82,17 @@ export function loadSeats(env: NodeJS.ProcessEnv = process.env): Record<string, 
   try {
     const raw = JSON.parse(readFileSync(seatsFile(env), "utf8")) as Record<string, Partial<Seat>>;
     if (raw && typeof raw === "object") {
-      // A seat without a relay cannot be resumed — the relay used to come from
-      // config, and guessing it now would be a default by another name.
-      return Object.fromEntries(
-        Object.entries(raw).filter(([, seat]) => typeof seat.relay_url === "string"),
-      ) as Record<string, Seat>;
+      // Seats written before invites carried a relay have no relay_url. Back
+      // then config held the only relay there was, so filling it in from
+      // config is a fact about that seat, not a default. Without config the
+      // seat cannot be resumed and is left out.
+      const legacyRelay = loadConfig(env).relay_url;
+      const seats: Record<string, Seat> = {};
+      for (const [id, seat] of Object.entries(raw)) {
+        if (typeof seat.relay_url === "string") seats[id] = seat as Seat;
+        else if (legacyRelay) seats[id] = { ...(seat as Seat), relay_url: legacyRelay };
+      }
+      return seats;
     }
   } catch {
     // none yet

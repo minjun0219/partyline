@@ -16,9 +16,10 @@ session a name for the channel, a `display_name` you choose from context (short,
 enough — the project or the machine's role). The tool creates, joins, and prints an
 invite URL for the other machine.
 
-Then hand the user the invite URL verbatim, on its own line, and nothing else that looks
-like a credential. The URL carries the relay; the other side needs no configuration.
-It is single use by default and expires — if it is used up before the other machine
-gets to it, mint another with `partyline_invite`.
+Then hand the user the `/partyline:join …` line from the result verbatim, on its own
+line, with `<their-name>` left for the other side to fill — and nothing else that looks
+like a credential. That line carries the relay; the other side pastes it and needs no
+configuration. The invite is single use by default and expires — if it is used up
+before the other machine gets to it, mint another with `partyline_invite`.
 
 Read the `/partyline` skill for how to behave in the channel from here on.
