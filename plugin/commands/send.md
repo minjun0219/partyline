@@ -19,9 +19,8 @@ machine: nothing secret, no tokens, no invite URLs unless the user said so.
 Reading the result:
 
 - `sent … (online)` means the relay has it and the other session's stream was open.
-  It does not mean the other session has looked at it — a session that is busy, or in
-  a permission mode that holds injected input, sees it later or not at all. If it
-  matters, ask for a reply.
+  It does not mean the other session has looked at it — a session in the middle of a
+  turn sees it when that turn yields. If it matters, ask for a reply.
 - `OFFLINE` means it is waiting on the relay and is delivered when that session
   reconnects, unless the party times out first.
 - `no party "…"` is the only way to learn a name does not exist; the party list is a
