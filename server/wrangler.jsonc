@@ -10,8 +10,6 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-08-01",
   // Attach a custom domain; keep workers.dev closed so the relay has one URL.
-  // (Version preview URLs are not available to Workers with Durable Objects,
-  // so there is no preview to enable — try a build locally with `pnpm dev`.)
   "workers_dev": false,
   "durable_objects": {
     "bindings": [
@@ -26,5 +24,23 @@
     "redact_query_string": false,
     "logs": { "enabled": true, "head_sampling_rate": 1, "persist": true, "invocation_logs": true },
     "traces": { "enabled": true, "persist": true, "head_sampling_rate": 1 },
+  },
+  "env": {
+    // A second, independent relay for trying a build before it goes live:
+    //   wrangler deploy --env preview
+    // Version preview URLs do not exist for Workers with Durable Objects, so
+    // this is a real deployment of a separate Worker (`partyline-preview`)
+    // with its own storage, its own domain, and its own secrets
+    // (`wrangler secret put RELAY_KEY --env preview`). Bindings are not
+    // inherited by environments, hence the repetition.
+    "preview": {
+      "durable_objects": {
+        "bindings": [
+          { "name": "CHANNEL", "class_name": "ChannelDO" },
+          { "name": "GATE", "class_name": "RateLimitDO" },
+        ],
+      },
+      "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ChannelDO", "RateLimitDO"] }],
+    },
   },
 }
