@@ -394,8 +394,9 @@ Frames are JSON text.
 | → client | `{"type":"error","error":"…","message":"…"}` |
 
 On open the relay sends `ready`, then every unacknowledged message in `seq` order, then
-live traffic. The relay MUST send a `ping` at least every 30 seconds; a client that does
-not answer within 30 seconds is treated as disconnected. Application-level pings are
+live traffic. The relay MUST send a `ping` at least every 30 seconds; a client that has
+answered none of the last two is treated as disconnected — its stream is closed and it
+is no longer `online` (see the party list below). Application-level pings are
 specified because WebSocket control frames are not exposed by every runtime. The ping
 also serves the client: a stream that has carried no frame of any kind for three ping
 intervals SHOULD be treated as dead and reopened, since a half-open socket (a sleeping

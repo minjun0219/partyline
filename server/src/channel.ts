@@ -20,13 +20,14 @@ import {
   type RecipientView,
   type ServerFrame,
   WS_CLOSE,
+  WS_PING_INTERVAL_MS,
 } from "./protocol.ts";
 
 const MESSAGE_TTL_MS = LIMITS.message_ttl_seconds * 1000;
 const PARTY_TTL_MS = LIMITS.party_ttl_seconds * 1000;
 const ALARM_INTERVAL_MS = 30 * 1000;
-/** Two missed ping rounds before a silent socket is dropped. */
-const PONG_DEADLINE_MS = 75 * 1000;
+/** Two missed pings before a silent socket is dropped (SPEC.md §6). */
+const PONG_DEADLINE_MS = 2 * WS_PING_INTERVAL_MS;
 
 /** In-memory per-party fixed-window rate limits (reference-grade). */
 const SEND_RATE_PER_MINUTE = 120;
