@@ -5,3 +5,4 @@ node_modules/
 *.local
 .wrangler/
 .DS_Store
+CLAUDE.local.md
