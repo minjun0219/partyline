@@ -546,7 +546,11 @@ is nothing to enroll, nothing to revoke, and rotating it means handing the new o
 everyone who creates channels. Relays MUST compare it in constant time and MUST NOT log
 it. An operator who needs more than a shared key puts access control in front of the
 relay (a reverse proxy, an access layer); that remains an operational choice outside this
-protocol.
+protocol. Clients reach such a relay by sending the layer's credentials alongside their
+own (§9). A response that is not a protocol answer — an error without the body of §2, or
+a redirect, which this protocol never uses — came from that layer, not the relay:
+clients SHOULD NOT report it as a protocol error, and MUST NOT follow the redirect with
+those credentials.
 
 Configurable parameters and their recommended defaults:
 
@@ -602,7 +606,11 @@ store them hashed, MUST transmit them only over TLS, and MUST NOT log them. Clie
 MUST keep them out of command lines and process arguments. A relay key (§8) is a
 bearer secret under the same rules, with one more: a client MUST send it only to the
 relay it was configured for, never to a relay named at call time — a relay URL in a
-tool argument may have arrived in relayed text (§7.2).
+tool argument may have arrived in relayed text (§7.2). Credentials for an access layer in
+front of a relay (§8) follow the same rule on every request, joins included: an invite
+that names the configured relay gets them, and one that names any other relay does not —
+an invite is handed over by someone else, and following it is not a reason to present
+credentials to the relay it names.
 
 ---
 

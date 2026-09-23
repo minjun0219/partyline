@@ -13,14 +13,50 @@ export class RelayError extends Error {
   }
 }
 
+type HeaderSource = (relayUrl: string) => Record<string, string>;
+let accessHeaders: HeaderSource = () => ({});
+
+/**
+ * Where access-layer headers (SPEC.md §8) come from — set once at startup,
+ * consulted per request so the HTTP calls and the stream agree. The source
+ * decides which relay gets them (config.ts headersFor).
+ */
+export function useAccessHeaders(source: HeaderSource): void {
+  accessHeaders = source;
+}
+
+export function accessHeadersFor(relayUrl: string): Record<string, string> {
+  return accessHeaders(relayUrl);
+}
+
 async function request<T>(relayUrl: string, path: string, init: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${relayUrl}${path}`, init);
+  const res = await fetch(`${relayUrl}${path}`, {
+    ...init,
+    headers: { ...accessHeadersFor(relayUrl), ...(init.headers as Record<string, string>) },
+    // The protocol never redirects. Following one would carry access-layer
+    // headers to wherever it points — fetch strips only Authorization.
+    redirect: "manual",
+  });
   if (res.status === 204) return undefined as T;
-  const body = (await res.json().catch(() => ({}))) as ErrorBody & T;
-  if (!res.ok) {
-    throw new RelayError(res.status, body.error ?? "unknown", body.message ?? res.statusText);
+  const parsed = (await res.json().catch(() => null)) as (ErrorBody & T) | null;
+  // Every relay answer is JSON and every error carries the body of SPEC.md §2;
+  // anything else came from something in front of the relay — an access
+  // layer's refusal, or a redirect to its login page.
+  if (!parsed || (!res.ok && typeof parsed.error !== "string")) {
+    const refused = res.status === 401 || res.status === 403 || res.status < 400;
+    throw new RelayError(
+      res.status,
+      "not_relay",
+      `${res.status} that is not a Partyline answer — something in front of the relay responded` +
+        (refused
+          ? ', likely an access layer. If its operator gave you credentials, set "relay_headers" next to "relay_url" in config.'
+          : "."),
+    );
   }
-  return body;
+  if (!res.ok) {
+    throw new RelayError(res.status, parsed.error ?? "unknown", parsed.message ?? res.statusText);
+  }
+  return parsed;
 }
 
 function bearer(token: string): Record<string, string> {

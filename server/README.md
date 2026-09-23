@@ -51,8 +51,9 @@ channels here, not who may be in them — and rotating it is setting a new
 one and handing it out again. It is a single shared key on purpose: no
 accounts, nothing per-user to revoke. Needing more than that means
 putting an access layer in front of the Worker, which the protocol
-deliberately leaves outside itself. Locally, `pnpm dev` reads the key
-from `.dev.vars` (gitignored).
+deliberately leaves outside itself; the plugin carries that layer's
+credentials as `relay_headers` in its configuration. Locally, `pnpm dev`
+reads the key from `.dev.vars` (gitignored).
 
 There is no default relay URL anywhere in this repository; clients are
 pointed at your deployment explicitly. Before you invite anyone, read the

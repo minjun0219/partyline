@@ -25130,11 +25130,31 @@ function loadConfig(env = process.env) {
     // The file's key belongs to the file's relay. When the environment points
     // at a different relay, that key must not follow (SPEC.md §9).
     relay_key: keyFromEnv || (fromEnv ? null : keyFromFile || null),
+    // Same rule as the key: the file's headers belong to the file's relay.
+    relay_headers: fromEnv ? null : parseRelayHeaders(raw.relay_headers),
     machine_label: typeof raw.machine_label === "string" && raw.machine_label.trim() !== "" ? raw.machine_label : (0, import_node_os.hostname)()
   };
 }
+var RESERVED_HEADER = /^(authorization|content-type|content-length|host|connection|upgrade|sec-websocket-.*)$/i;
+var HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+var HEADER_VALUE = /^[\t\x20-\x7e\x80-\xff]*$/;
+function parseRelayHeaders(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const headers = {};
+  for (const [name, value] of Object.entries(raw)) {
+    if (typeof value !== "string" || RESERVED_HEADER.test(name) || !HEADER_NAME.test(name))
+      continue;
+    const trimmed = value.trim();
+    if (HEADER_VALUE.test(trimmed)) headers[name] = trimmed;
+  }
+  return Object.keys(headers).length > 0 ? headers : null;
+}
 function trimSlash(url) {
   return url.replace(/\/+$/, "");
+}
+function headersFor(config2, relayUrl) {
+  if (!config2.relay_headers || !config2.relay_url) return {};
+  return trimSlash(relayUrl) === trimSlash(config2.relay_url) ? config2.relay_headers : {};
 }
 function relayForCreate(config2, explicit) {
   const url = explicit?.trim() || config2.relay_url;
@@ -25187,6 +25207,107 @@ var import_subprotocol = __toESM(require_subprotocol(), 1);
 var import_websocket = __toESM(require_websocket(), 1);
 var import_websocket_server = __toESM(require_websocket_server(), 1);
 var wrapper_default = import_websocket.default;
+
+// src/relay.ts
+var RelayError = class extends Error {
+  constructor(status, code, message) {
+    super(message);
+    this.status = status;
+    this.code = code;
+  }
+  status;
+  code;
+};
+var accessHeaders = () => ({});
+function useAccessHeaders(source) {
+  accessHeaders = source;
+}
+function accessHeadersFor(relayUrl) {
+  return accessHeaders(relayUrl);
+}
+async function request(relayUrl, path, init = {}) {
+  const res = await fetch(`${relayUrl}${path}`, {
+    ...init,
+    headers: { ...accessHeadersFor(relayUrl), ...init.headers },
+    // The protocol never redirects. Following one would carry access-layer
+    // headers to wherever it points — fetch strips only Authorization.
+    redirect: "manual"
+  });
+  if (res.status === 204) return void 0;
+  const parsed = await res.json().catch(() => null);
+  if (!parsed || !res.ok && typeof parsed.error !== "string") {
+    const refused = res.status === 401 || res.status === 403 || res.status < 400;
+    throw new RelayError(
+      res.status,
+      "not_relay",
+      `${res.status} that is not a Partyline answer \u2014 something in front of the relay responded` + (refused ? ', likely an access layer. If its operator gave you credentials, set "relay_headers" next to "relay_url" in config.' : ".")
+    );
+  }
+  if (!res.ok) {
+    throw new RelayError(res.status, parsed.error ?? "unknown", parsed.message ?? res.statusText);
+  }
+  return parsed;
+}
+function bearer(token) {
+  return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+}
+async function createChannel(relayUrl, name, relayKey = null) {
+  return request(relayUrl, "/v1/channels", {
+    method: "POST",
+    headers: relayKey ? bearer(relayKey) : { "Content-Type": "application/json" },
+    body: JSON.stringify({ name })
+  });
+}
+async function joinChannel(relayUrl, channelId, inviteToken, displayName, machineLabel, about) {
+  return request(relayUrl, `/v1/channels/${channelId}/join`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      invite_token: inviteToken,
+      display_name: displayName,
+      machine_label: machineLabel,
+      about
+    })
+  });
+}
+async function mintInvite(relayUrl, channelId, partyToken, ttlSeconds, maxUses) {
+  return request(relayUrl, `/v1/channels/${channelId}/invites`, {
+    method: "POST",
+    headers: bearer(partyToken),
+    body: JSON.stringify({ ttl_seconds: ttlSeconds, max_uses: maxUses })
+  });
+}
+async function listParties(relayUrl, channelId, partyToken) {
+  return request(relayUrl, `/v1/channels/${channelId}/parties`, {
+    headers: bearer(partyToken)
+  });
+}
+async function updateMe(relayUrl, channelId, partyToken, patch) {
+  return request(relayUrl, `/v1/channels/${channelId}/parties/me`, {
+    method: "PATCH",
+    headers: bearer(partyToken),
+    body: JSON.stringify(patch)
+  });
+}
+async function leaveChannel(relayUrl, channelId, partyToken) {
+  await request(relayUrl, `/v1/channels/${channelId}/parties/me`, {
+    method: "DELETE",
+    headers: bearer(partyToken)
+  });
+}
+async function sendMessage(relayUrl, channelId, partyToken, to, body, replyTo) {
+  return request(relayUrl, `/v1/channels/${channelId}/messages`, {
+    method: "POST",
+    headers: bearer(partyToken),
+    body: JSON.stringify({ to, body, reply_to: replyTo })
+  });
+}
+async function destroyChannel(relayUrl, channelId, partyToken) {
+  await request(relayUrl, `/v1/channels/${channelId}`, {
+    method: "DELETE",
+    headers: bearer(partyToken)
+  });
+}
 
 // src/receive.ts
 function rawText(raw) {
@@ -25276,7 +25397,7 @@ var ChannelConnection = class {
     const url = `${relayUrl.replace(/^http/, "ws")}/v1/channels/${seat.channel_id}/stream`;
     this.status = "connecting";
     const ws = new wrapper_default(url, {
-      headers: { Authorization: `Bearer ${seat.party_token}` }
+      headers: { ...accessHeadersFor(relayUrl), Authorization: `Bearer ${seat.party_token}` }
     });
     this.ws = ws;
     ws.on("open", () => {
@@ -25380,86 +25501,6 @@ var ChannelConnection = class {
     }
   }
 };
-
-// src/relay.ts
-var RelayError = class extends Error {
-  constructor(status, code, message) {
-    super(message);
-    this.status = status;
-    this.code = code;
-  }
-  status;
-  code;
-};
-async function request(relayUrl, path, init = {}) {
-  const res = await fetch(`${relayUrl}${path}`, init);
-  if (res.status === 204) return void 0;
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new RelayError(res.status, body.error ?? "unknown", body.message ?? res.statusText);
-  }
-  return body;
-}
-function bearer(token) {
-  return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
-}
-async function createChannel(relayUrl, name, relayKey = null) {
-  return request(relayUrl, "/v1/channels", {
-    method: "POST",
-    headers: relayKey ? bearer(relayKey) : { "Content-Type": "application/json" },
-    body: JSON.stringify({ name })
-  });
-}
-async function joinChannel(relayUrl, channelId, inviteToken, displayName, machineLabel, about) {
-  return request(relayUrl, `/v1/channels/${channelId}/join`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      invite_token: inviteToken,
-      display_name: displayName,
-      machine_label: machineLabel,
-      about
-    })
-  });
-}
-async function mintInvite(relayUrl, channelId, partyToken, ttlSeconds, maxUses) {
-  return request(relayUrl, `/v1/channels/${channelId}/invites`, {
-    method: "POST",
-    headers: bearer(partyToken),
-    body: JSON.stringify({ ttl_seconds: ttlSeconds, max_uses: maxUses })
-  });
-}
-async function listParties(relayUrl, channelId, partyToken) {
-  return request(relayUrl, `/v1/channels/${channelId}/parties`, {
-    headers: bearer(partyToken)
-  });
-}
-async function updateMe(relayUrl, channelId, partyToken, patch) {
-  return request(relayUrl, `/v1/channels/${channelId}/parties/me`, {
-    method: "PATCH",
-    headers: bearer(partyToken),
-    body: JSON.stringify(patch)
-  });
-}
-async function leaveChannel(relayUrl, channelId, partyToken) {
-  await request(relayUrl, `/v1/channels/${channelId}/parties/me`, {
-    method: "DELETE",
-    headers: bearer(partyToken)
-  });
-}
-async function sendMessage(relayUrl, channelId, partyToken, to, body, replyTo) {
-  return request(relayUrl, `/v1/channels/${channelId}/messages`, {
-    method: "POST",
-    headers: bearer(partyToken),
-    body: JSON.stringify({ to, body, reply_to: replyTo })
-  });
-}
-async function destroyChannel(relayUrl, channelId, partyToken) {
-  await request(relayUrl, `/v1/channels/${channelId}`, {
-    method: "DELETE",
-    headers: bearer(partyToken)
-  });
-}
 
 // src/invite.ts
 var JOIN_PATH = "/join";
@@ -25713,6 +25754,11 @@ server.registerTool(
     lines.push(
       `relay for creating channels: ${config2.relay_url ?? "not configured (no default; joining an invite needs none)"}` + (config2.relay_key ? " (relay key set \u2014 sent only there, never printed)" : "")
     );
+    if (config2.relay_headers) {
+      lines.push(
+        `access-layer headers for that relay: ${Object.keys(config2.relay_headers).join(", ")} (values never printed)`
+      );
+    }
     lines.push(`config dir: ${configDir()}`);
     lines.push(`machine label: ${config2.machine_label} (self-declared, shown to other parties)`);
     const seats = loadSeats();
@@ -25756,7 +25802,7 @@ server.registerTool(
       try {
         created = await createChannel(relayUrl, name ?? "", key);
       } catch (err) {
-        if (err instanceof RelayError && err.status === 401) {
+        if (err instanceof RelayError && err.code === "unauthorized") {
           throw new RelayError(401, err.code, closedRelayHint(relayUrl, key, config2));
         }
         throw err;
@@ -26016,6 +26062,7 @@ server.registerTool(
   }
 );
 async function main() {
+  useAccessHeaders((relayUrl) => headersFor(loadConfig(), relayUrl));
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }

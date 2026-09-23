@@ -8,6 +8,7 @@ import { z } from "zod";
 import {
   configDir,
   dropSeat,
+  headersFor,
   loadConfig,
   loadSeats,
   type PartylineConfig,
@@ -214,6 +215,11 @@ server.registerTool(
       `relay for creating channels: ${config.relay_url ?? "not configured (no default; joining an invite needs none)"}` +
         (config.relay_key ? " (relay key set — sent only there, never printed)" : ""),
     );
+    if (config.relay_headers) {
+      lines.push(
+        `access-layer headers for that relay: ${Object.keys(config.relay_headers).join(", ")} (values never printed)`,
+      );
+    }
     lines.push(`config dir: ${configDir()}`);
     lines.push(`machine label: ${config.machine_label} (self-declared, shown to other parties)`);
     const seats = loadSeats();
@@ -276,7 +282,9 @@ server.registerTool(
       try {
         created = await relay.createChannel(relayUrl, name ?? "", key);
       } catch (err) {
-        if (err instanceof RelayError && err.status === 401) {
+        // Only the relay's own refusal is about the key; a 401 from an access
+        // layer in front of it (not_relay) already says what it is.
+        if (err instanceof RelayError && err.code === "unauthorized") {
           throw new RelayError(401, err.code, closedRelayHint(relayUrl, key, config));
         }
         throw err;
@@ -566,6 +574,9 @@ server.registerTool(
 // ---- main ------------------------------------------------------------------
 
 async function main(): Promise<void> {
+  // Read per request, so rotated access-layer credentials apply to the next
+  // reconnect without restarting the session.
+  relay.useAccessHeaders((relayUrl) => headersFor(loadConfig(), relayUrl));
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }
