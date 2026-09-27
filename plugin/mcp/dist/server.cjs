@@ -25123,15 +25123,14 @@ function loadConfig(env = process.env) {
   } catch {
   }
   const fromEnv = env.PARTYLINE_RELAY_URL?.trim();
+  const fromFile = typeof raw.relay_url === "string" ? raw.relay_url : null;
   const keyFromEnv = env.PARTYLINE_RELAY_KEY?.trim();
   const keyFromFile = typeof raw.relay_key === "string" ? raw.relay_key.trim() : "";
+  const fileRelay = !fromEnv || fromFile !== null && sameRelay(fromEnv, fromFile);
   return {
-    relay_url: fromEnv || (typeof raw.relay_url === "string" ? raw.relay_url : null),
-    // The file's key belongs to the file's relay. When the environment points
-    // at a different relay, that key must not follow (SPEC.md §9).
-    relay_key: keyFromEnv || (fromEnv ? null : keyFromFile || null),
-    // Same rule as the key: the file's headers belong to the file's relay.
-    relay_headers: fromEnv ? null : parseRelayHeaders(raw.relay_headers),
+    relay_url: fromEnv || fromFile,
+    relay_key: keyFromEnv || (fileRelay ? keyFromFile || null : null),
+    relay_headers: fileRelay ? parseRelayHeaders(raw.relay_headers) : null,
     machine_label: typeof raw.machine_label === "string" && raw.machine_label.trim() !== "" ? raw.machine_label : (0, import_node_os.hostname)()
   };
 }
@@ -25152,16 +25151,18 @@ function parseRelayHeaders(raw) {
 function trimSlash(url) {
   return url.replace(/\/+$/, "");
 }
+function sameRelay(a, b) {
+  return trimSlash(a) === trimSlash(b);
+}
 function headersFor(config2, relayUrl) {
   if (!config2.relay_headers || !config2.relay_url) return {};
-  return trimSlash(relayUrl) === trimSlash(config2.relay_url) ? config2.relay_headers : {};
+  return sameRelay(relayUrl, config2.relay_url) ? config2.relay_headers : {};
 }
 function relayForCreate(config2, explicit) {
   const url = explicit?.trim() || config2.relay_url;
   if (!url) return null;
-  const configured = config2.relay_url ? trimSlash(config2.relay_url) : null;
-  const chosen = trimSlash(url);
-  return { url: chosen, key: chosen === configured ? config2.relay_key : null };
+  const configured = config2.relay_url !== null && sameRelay(url, config2.relay_url);
+  return { url: trimSlash(url), key: configured ? config2.relay_key : null };
 }
 function writeRestricted(path, value, env) {
   (0, import_node_fs.mkdirSync)(configDir(env), { recursive: true });

@@ -84,6 +84,24 @@ describe("config", () => {
     expect(loadConfig(env).relay_key).toBe("rk_other");
   });
 
+  it("keeps the file's key and headers when the environment names the same relay", () => {
+    const env = tempEnv();
+    saveConfig(
+      {
+        relay_url: "https://relay.example",
+        relay_key: "rk_file",
+        relay_headers: { "X-Access": "a" },
+        machine_label: "m",
+      },
+      env,
+    );
+    env.PARTYLINE_RELAY_URL = "https://relay.example/";
+    expect(loadConfig(env)).toMatchObject({
+      relay_key: "rk_file",
+      relay_headers: { "X-Access": "a" },
+    });
+  });
+
   it("sends the relay key only to the configured relay (SPEC.md §9)", () => {
     const config = {
       relay_url: "https://relay.example/",

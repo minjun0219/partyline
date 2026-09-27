@@ -70,15 +70,17 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): PartylineConfi
     // missing or unreadable — unconfigured
   }
   const fromEnv = env.PARTYLINE_RELAY_URL?.trim();
+  const fromFile = typeof raw.relay_url === "string" ? raw.relay_url : null;
   const keyFromEnv = env.PARTYLINE_RELAY_KEY?.trim();
   const keyFromFile = typeof raw.relay_key === "string" ? raw.relay_key.trim() : "";
+  // The file's key and headers belong to the file's relay. When the
+  // environment points at a different relay, they must not follow (SPEC.md §9);
+  // when it names the same one, they still apply.
+  const fileRelay = !fromEnv || (fromFile !== null && sameRelay(fromEnv, fromFile));
   return {
-    relay_url: fromEnv || (typeof raw.relay_url === "string" ? raw.relay_url : null),
-    // The file's key belongs to the file's relay. When the environment points
-    // at a different relay, that key must not follow (SPEC.md §9).
-    relay_key: keyFromEnv || (fromEnv ? null : keyFromFile || null),
-    // Same rule as the key: the file's headers belong to the file's relay.
-    relay_headers: fromEnv ? null : parseRelayHeaders(raw.relay_headers),
+    relay_url: fromEnv || fromFile,
+    relay_key: keyFromEnv || (fileRelay ? keyFromFile || null : null),
+    relay_headers: fileRelay ? parseRelayHeaders(raw.relay_headers) : null,
     machine_label:
       typeof raw.machine_label === "string" && raw.machine_label.trim() !== ""
         ? raw.machine_label
@@ -114,6 +116,15 @@ function trimSlash(url: string): string {
 }
 
 /**
+ * Whether two relay URLs name the same relay — the one comparison every
+ * credential-scoping rule uses (SPEC.md §9). Exact but for trailing slashes,
+ * so a mismatch in spelling withholds credentials rather than leaking them.
+ */
+function sameRelay(a: string, b: string): boolean {
+  return trimSlash(a) === trimSlash(b);
+}
+
+/**
  * The access-layer headers for a request to relayUrl — the configured ones
  * when relayUrl is the configured relay, none otherwise. An invite or a tool
  * argument can name any relay, and headers sent there are credentials leaked
@@ -121,7 +132,7 @@ function trimSlash(url: string): string {
  */
 export function headersFor(config: PartylineConfig, relayUrl: string): Record<string, string> {
   if (!config.relay_headers || !config.relay_url) return {};
-  return trimSlash(relayUrl) === trimSlash(config.relay_url) ? config.relay_headers : {};
+  return sameRelay(relayUrl, config.relay_url) ? config.relay_headers : {};
 }
 
 /**
@@ -136,9 +147,8 @@ export function relayForCreate(
 ): { url: string; key: string | null } | null {
   const url = explicit?.trim() || config.relay_url;
   if (!url) return null;
-  const configured = config.relay_url ? trimSlash(config.relay_url) : null;
-  const chosen = trimSlash(url);
-  return { url: chosen, key: chosen === configured ? config.relay_key : null };
+  const configured = config.relay_url !== null && sameRelay(url, config.relay_url);
+  return { url: trimSlash(url), key: configured ? config.relay_key : null };
 }
 
 function writeRestricted(path: string, value: unknown, env: NodeJS.ProcessEnv): void {
