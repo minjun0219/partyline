@@ -10,6 +10,7 @@
 
 import WebSocket, { type RawData } from "ws";
 import type { Seat } from "./config.ts";
+import { accessHeadersFor } from "./relay.ts";
 import type { MessageEnvelope, ServerFrame } from "./types.ts";
 
 // ws hands frames over as Buffer, Buffer[] or ArrayBuffer depending on the runtime
@@ -130,7 +131,7 @@ export class ChannelConnection {
     const url = `${relayUrl.replace(/^http/, "ws")}/v1/channels/${seat.channel_id}/stream`;
     this.status = "connecting";
     const ws = new WebSocket(url, {
-      headers: { Authorization: `Bearer ${seat.party_token}` },
+      headers: { ...accessHeadersFor(relayUrl), Authorization: `Bearer ${seat.party_token}` },
     });
     this.ws = ws;
 

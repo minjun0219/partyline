@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   configDir,
   dropSeat,
+  headersFor,
   loadConfig,
   loadSeats,
   relayForCreate,
@@ -35,7 +36,15 @@ describe("config", () => {
 
   it("takes the relay from the environment or the file, never from code", () => {
     const env = tempEnv();
-    saveConfig({ relay_url: "https://relay.example", relay_key: null, machine_label: "m" }, env);
+    saveConfig(
+      {
+        relay_url: "https://relay.example",
+        relay_key: null,
+        relay_headers: null,
+        machine_label: "m",
+      },
+      env,
+    );
     expect(loadConfig(env).relay_url).toBe("https://relay.example");
     env.PARTYLINE_RELAY_URL = "https://other.example";
     expect(loadConfig(env).relay_url).toBe("https://other.example");
@@ -45,7 +54,12 @@ describe("config", () => {
     const env = tempEnv();
     expect(loadConfig(env).relay_key).toBeNull();
     saveConfig(
-      { relay_url: "https://relay.example", relay_key: "rk_file\n", machine_label: "m" },
+      {
+        relay_url: "https://relay.example",
+        relay_key: "rk_file\n",
+        relay_headers: null,
+        machine_label: "m",
+      },
       env,
     );
     expect(loadConfig(env).relay_key).toBe("rk_file");
@@ -56,7 +70,12 @@ describe("config", () => {
   it("does not carry the file's key to a relay named by the environment (SPEC.md §9)", () => {
     const env = tempEnv();
     saveConfig(
-      { relay_url: "https://relay.example", relay_key: "rk_file", machine_label: "m" },
+      {
+        relay_url: "https://relay.example",
+        relay_key: "rk_file",
+        relay_headers: null,
+        machine_label: "m",
+      },
       env,
     );
     env.PARTYLINE_RELAY_URL = "https://other.example";
@@ -65,8 +84,31 @@ describe("config", () => {
     expect(loadConfig(env).relay_key).toBe("rk_other");
   });
 
+  it("keeps the file's key and headers when the environment names the same relay", () => {
+    const env = tempEnv();
+    saveConfig(
+      {
+        relay_url: "https://relay.example",
+        relay_key: "rk_file",
+        relay_headers: { "X-Access": "a" },
+        machine_label: "m",
+      },
+      env,
+    );
+    env.PARTYLINE_RELAY_URL = "https://relay.example/";
+    expect(loadConfig(env)).toMatchObject({
+      relay_key: "rk_file",
+      relay_headers: { "X-Access": "a" },
+    });
+  });
+
   it("sends the relay key only to the configured relay (SPEC.md §9)", () => {
-    const config = { relay_url: "https://relay.example/", relay_key: "rk", machine_label: "m" };
+    const config = {
+      relay_url: "https://relay.example/",
+      relay_key: "rk",
+      relay_headers: null,
+      machine_label: "m",
+    };
     expect(relayForCreate(config, undefined)).toEqual({ url: "https://relay.example", key: "rk" });
     expect(relayForCreate(config, "https://relay.example")).toEqual({
       url: "https://relay.example",
@@ -79,9 +121,52 @@ describe("config", () => {
     expect(relayForCreate({ ...config, relay_url: null }, undefined)).toBeNull();
   });
 
+  it("reads access-layer headers, never ones the protocol sets", () => {
+    const env = tempEnv();
+    expect(loadConfig(env).relay_headers).toBeNull();
+    saveConfig(
+      {
+        relay_url: "https://relay.example",
+        relay_key: null,
+        relay_headers: {
+          "CF-Access-Client-Id": "id.access",
+          "CF-Access-Client-Secret": "secret\n",
+          authorization: "Bearer stolen",
+          "Sec-WebSocket-Protocol": "x",
+          "X-Number": 1 as unknown as string,
+          "X-Pasted": "sec\nret",
+          "Bad Name": "v",
+        },
+        machine_label: "m",
+      },
+      env,
+    );
+    expect(loadConfig(env).relay_headers).toEqual({
+      "CF-Access-Client-Id": "id.access",
+      "CF-Access-Client-Secret": "secret",
+    });
+    // Same rule as the key: a relay named by the environment gets none.
+    env.PARTYLINE_RELAY_URL = "https://other.example";
+    expect(loadConfig(env).relay_headers).toBeNull();
+  });
+
+  it("sends access-layer headers only to the configured relay (SPEC.md §9)", () => {
+    const headers = { "X-Access": "a" };
+    const config = {
+      relay_url: "https://relay.example/",
+      relay_key: null,
+      relay_headers: headers,
+      machine_label: "m",
+    };
+    expect(headersFor(config, "https://relay.example")).toEqual(headers);
+    expect(headersFor(config, "https://relay.example/")).toEqual(headers);
+    expect(headersFor(config, "https://other.example")).toEqual({});
+    expect(headersFor({ ...config, relay_url: null }, "https://relay.example")).toEqual({});
+  });
+
   it("writes credential files with 0600 (SPEC.md §7.6)", () => {
     const env = tempEnv();
-    saveConfig({ relay_url: null, relay_key: null, machine_label: "m" }, env);
+    saveConfig({ relay_url: null, relay_key: null, relay_headers: null, machine_label: "m" }, env);
     const mode = statSync(join(configDir(env), "config.json")).mode & 0o777;
     expect(mode).toBe(0o600);
   });
@@ -118,7 +203,15 @@ describe("seats", () => {
     // Before invites carried a relay, config held the only one — so this is
     // the seat's relay, not a guess. Without config there is nothing to fill.
     expect(loadSeats(env).c_old).toBeUndefined();
-    saveConfig({ relay_url: "https://relay.example", relay_key: null, machine_label: "m" }, env);
+    saveConfig(
+      {
+        relay_url: "https://relay.example",
+        relay_key: null,
+        relay_headers: null,
+        machine_label: "m",
+      },
+      env,
+    );
     expect(loadSeats(env).c_old).toMatchObject({
       relay_url: "https://relay.example",
       last_injected_seq: 5,
@@ -332,6 +425,133 @@ describe("stream watchdog", () => {
     } finally {
       connection.stop();
       wss.close();
+    }
+  });
+});
+
+describe("access-layer headers on the wire", () => {
+  it("rides every HTTP call and the stream to the relay it is for, and no other", async () => {
+    const { createServer } = await import("node:http");
+    const { WebSocketServer } = await import("ws");
+    const relay = await import("../src/relay.ts");
+    const seen: Array<{ port: number; access: string | undefined; auth: string | undefined }> = [];
+    const listen = async () => {
+      const server = createServer((req, res) => {
+        seen.push({
+          port,
+          access: req.headers["x-access"] as string | undefined,
+          auth: req.headers.authorization,
+        });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ you: "p_1", parties: [] }));
+      });
+      const wss = new WebSocketServer({ server });
+      wss.on("connection", (_ws, req) => {
+        seen.push({
+          port,
+          access: req.headers["x-access"] as string | undefined,
+          auth: req.headers.authorization,
+        });
+      });
+      await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+      const { port } = server.address() as { port: number };
+      return { url: `http://127.0.0.1:${port}`, port, close: () => (wss.close(), server.close()) };
+    };
+    const mine = await listen();
+    const other = await listen();
+    relay.useAccessHeaders((url) =>
+      headersFor(
+        {
+          relay_url: mine.url,
+          relay_key: null,
+          relay_headers: { "X-Access": "a" },
+          machine_label: "m",
+        },
+        url,
+      ),
+    );
+    const seat = {
+      relay_url: mine.url,
+      channel_id: "c_1",
+      channel_name: "",
+      party_id: "p_1",
+      party_token: "pt",
+      display_name: "me",
+      last_injected_seq: 0,
+    };
+    const connection = new ChannelConnection({
+      relayUrl: mine.url,
+      seat,
+      persistSeat: () => {},
+      inject: async () => {},
+      note: () => {},
+    });
+    try {
+      await relay.listParties(mine.url, "c_1", "pt");
+      await relay.listParties(other.url, "c_1", "pt");
+      connection.start();
+      await new Promise((r) => setTimeout(r, 200));
+      expect(connection.status).toBe("connected");
+      expect(seen).toEqual([
+        { port: mine.port, access: "a", auth: "Bearer pt" },
+        { port: other.port, access: undefined, auth: "Bearer pt" },
+        { port: mine.port, access: "a", auth: "Bearer pt" },
+      ]);
+    } finally {
+      connection.stop();
+      relay.useAccessHeaders(() => ({}));
+      mine.close();
+      other.close();
+    }
+  });
+
+  it("does not follow a redirect, so the headers cannot either", async () => {
+    const { createServer } = await import("node:http");
+    const relay = await import("../src/relay.ts");
+    let reachedElsewhere = false;
+    const elsewhere = createServer((_req, res) => {
+      reachedElsewhere = true;
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end("<!doctype html><title>Sign in</title>");
+    });
+    await new Promise<void>((resolve) => elsewhere.listen(0, "127.0.0.1", resolve));
+    const target = `http://127.0.0.1:${(elsewhere.address() as { port: number }).port}/login`;
+    const front = createServer((_req, res) => {
+      res.writeHead(302, { Location: target });
+      res.end();
+    });
+    await new Promise<void>((resolve) => front.listen(0, "127.0.0.1", resolve));
+    const url = `http://127.0.0.1:${(front.address() as { port: number }).port}`;
+    relay.useAccessHeaders(() => ({ "X-Access": "a" }));
+    try {
+      const err = await relay.listParties(url, "c_1", "pt").catch((e: unknown) => e);
+      expect(err).toMatchObject({ status: 302, code: "not_relay" });
+      expect(reachedElsewhere).toBe(false);
+    } finally {
+      relay.useAccessHeaders(() => ({}));
+      front.close();
+      elsewhere.close();
+    }
+  });
+
+  it("names a refusal that did not come from the relay", async () => {
+    const { createServer } = await import("node:http");
+    const { RelayError, listParties } = await import("../src/relay.ts");
+    const server = createServer((_req, res) => {
+      res.writeHead(401, { "Content-Type": "text/html" });
+      res.end("<!doctype html><title>Access denied</title>");
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const { port } = server.address() as { port: number };
+    try {
+      const err = await listParties(`http://127.0.0.1:${port}`, "c_1", "pt").catch(
+        (e: unknown) => e,
+      );
+      expect(err).toBeInstanceOf(RelayError);
+      expect(err).toMatchObject({ status: 401, code: "not_relay" });
+      expect((err as Error).message).toMatch(/relay_headers/);
+    } finally {
+      server.close();
     }
   });
 });
