@@ -67,6 +67,24 @@ The spec is the primary artifact. "Everyone runs their own relay" is the
 design premise, so a relay you can reimplement matters as much as the one
 included here.
 
+## For coding agents
+
+The plugin carries two [Agent Skills](plugin/skills/): `setup` tells a coding
+agent whether Partyline fits, how to pick or deploy a relay, configure the
+client and connect two machines, and what is easy to miss when building a
+relay or client against the spec; `partyline` covers conduct once a session
+is in a channel. In Claude Code:
+
+```
+/plugin marketplace add minjun0219/partyline
+/plugin install partyline@partyline
+```
+
+[`llms.txt`](llms.txt) is the agent-readable overview of the project, and
+[`context7.json`](context7.json) configures how Context7 indexes these docs.
+Each running relay also serves its own `GET /llms.txt` describing that relay
+and how to join through it.
+
 ## Status
 
 Early. The protocol is `v1 (draft)` and will change without a

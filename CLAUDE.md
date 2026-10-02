@@ -22,6 +22,13 @@ that has drifted from the spec is a bug in both.
   start Claude Code with `claude --plugin-dir ./plugin` and use
   `/reload-plugins` after rebuilding — no reinstall or restart.
 - `.claude-plugin/marketplace.json` — plugin distribution, see below.
+- `llms.txt`, `context7.json`, and the plugin's `setup` skill
+  (`plugin/skills/setup/SKILL.md`) — how coding agents find and pick
+  Partyline. They restate behaviour (configuration keys, §7 client rules,
+  relay deployment), so update them in the same change as any of those.
+  CI validates `context7.json` against Context7's published schema. The
+  relay's own `GET /llms.txt` (`server/src/landing.ts`) is separate: it
+  describes one running relay.
 
 ## Principles
 
