@@ -3,5 +3,18 @@
   "description": "Cross-machine session messaging over a Partyline relay you configure yourself. Explicit join only — starting a session joins nothing. Every send is visible; every message is addressed.",
   "author": {
     "name": "Minjun Kim"
-  }
+  },
+  "homepage": "https://github.com/minjun0219/partyline",
+  "repository": "https://github.com/minjun0219/partyline",
+  "license": "MIT",
+  "keywords": [
+    "multi-machine",
+    "cross-machine",
+    "session-messaging",
+    "agent-coordination",
+    "relay",
+    "self-hosted",
+    "cloudflare-workers",
+    "mcp"
+  ]
 }

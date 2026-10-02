@@ -16,6 +16,14 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Context7 reads this file to hand coding agents the Partyline docs. Past a
+      # limit (description 200 chars, rules 255 each) it is rejected or cut, so
+      # validate against the schema Context7 publishes, fetched fresh each run.
+      - name: context7.json schema
+        run: |
+          curl -sSfL --retry 3 https://context7.com/schema/context7.json -o "$RUNNER_TEMP/context7.schema.json"
+          npx -y -p ajv-cli@5 -p ajv-formats@3 ajv validate -c ajv-formats \
+            -s "$RUNNER_TEMP/context7.schema.json" -d context7.json
       - run: pnpm check
       - run: pnpm -r typecheck
       # Includes the plugin's e2e test, which spawns the reference relay under

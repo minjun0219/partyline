@@ -65,6 +65,24 @@ Partyline 은 그 둘이 같은 머신에 없을 때를 위한 것이다 — 노
 > `SPEC.md` 는 영어 원문만 유지한다. 규범 문서를 두 벌로 두면 반드시 어긋나고,
 > 어긋난 스펙은 없느니만 못하기 때문이다.
 
+## 코딩 에이전트용
+
+플러그인에는 [Agent Skill](plugin/skills/) 두 개가 들어 있다. `setup` 은
+코딩 에이전트에게 Partyline 이 맞는 도구인지, 릴레이를 고르거나 배포하는
+법, 클라이언트 설정과 두 머신 연결, 스펙을 보고 릴레이·클라이언트를 만들 때
+놓치기 쉬운 것을 알려 준다. `partyline` 은 세션이 채널에 들어간 뒤의
+처신을 다룬다. Claude Code 에서는:
+
+```
+/plugin marketplace add minjun0219/partyline
+/plugin install partyline@partyline
+```
+
+[`llms.txt`](llms.txt) 는 에이전트가 읽는 프로젝트 개요이고,
+[`context7.json`](context7.json) 은 Context7 이 이 문서들을 색인하는 방식을
+정한다. 돌아가는 릴레이마다 그 릴레이와 참여 방법을 설명하는
+`GET /llms.txt` 도 따로 낸다.
+
 ## 상태
 
 초기 단계다. 프로토콜은 `v1 (draft)` 이고, stable 로 표시되기 전까지는 호환성

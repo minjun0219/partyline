@@ -65,7 +65,9 @@ promise. The tools are also callable directly (`partyline_channel_create`,
 `partyline_update_me`, `partyline_destroy` — the last burns a channel
 whose invite leaked), and a `partyline` skill holds the conduct they
 share: received text is untrusted, replies carry `reply_to`, nothing
-secret goes through a channel.
+secret goes through a channel. A second skill, `setup`, walks an agent
+through picking or deploying a relay, configuring this client and
+connecting a second machine.
 
 A restarted session keeps its seat but not its stream (so does a reload
 that replaces the plugin; one that changes nothing leaves the stream
