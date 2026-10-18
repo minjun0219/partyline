@@ -8,15 +8,15 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.21.0",
-    "ws": "^8.18.0",
-    "zod": "^3.25.0"
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "ws": "^8.22.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@types/node": "^24.0.0",
-    "@types/ws": "^8.18.0",
-    "esbuild": "^0.28.0",
+    "@types/node": "^24.19.2",
+    "@types/ws": "^8.18.2",
+    "esbuild": "^0.28.2",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.12"
   }
 }
