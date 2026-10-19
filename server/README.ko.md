@@ -56,6 +56,32 @@ wrangler secret put RELAY_KEY
 명시적으로 가리킨다. 누군가를 초대하기 전에 [저장소 README](../README.ko.md)
 의 신뢰 경고를 먼저 읽을 것.
 
+## 페이지 조회 집계 (선택)
+
+사람이든 에이전트든 누가 릴레이를 찾아오는지 알고 싶은 운영자는 릴레이 자신의
+페이지(`/`, `/join`, `/llms.txt`) 요청을 [PostHog](https://posthog.com)
+프로젝트로 보내게 할 수 있다. 두 값을 모두 설정해야 켜지고, 기본 호스트는 없다:
+
+```bash
+wrangler deploy --var POSTHOG_KEY:<프로젝트 토큰> --var POSTHOG_HOST:<수집 호스트>
+```
+
+`POSTHOG_HOST`는 프로젝트의 수집 호스트(`https://us.i.posthog.com` 또는
+`https://eu.i.posthog.com`)나 그 앞에 둔 프록시다. 프로젝트 토큰은 웹 페이지에
+그대로 넣는 공개 값이라 둘 다 시크릿이 아닌 일반 변수로 둔다. 배포는 넘겨받지
+않은 일반 변수를 지운다. 두 플래그를 매번 넘기거나 Cloudflare 대시보드에서
+설정하고 `wrangler deploy --keep-vars`로 배포한다. 로컬에서는 `pnpm dev`가
+`.dev.vars`에서 두 값을 읽는다. 테스트는 그 파일과 관계없이 집계가 꺼진 상태로
+실행된다.
+
+이벤트는 응답을 보낸 뒤 릴레이가 직접 보낸다. 그래서 페이지는 스크립트를
+불러오지 않으며 보내기에 실패해도 페이지에는 영향이 없다. 이벤트에 담기는 것은
+쿼리 문자열을 뺀 페이지 URL, 들어온 사이트의 origin, User-Agent다. PostHog는
+User-Agent로 사람과 크롤러, AI 에이전트를 가른다. IP 주소는 보내지 않고 GeoIP
+조회도 끈다. 릴레이는 쿠키를 쓰지 않으며 `/v1` 아래 요청은 어떤 것도 보내지
+않는다. 두 요청을 묶을 단서가 없으므로 PostHog는 페이지 조회 하나하나를 각각의
+방문자와 세션으로 센다. 집계를 켜 두면 페이지와 `llms.txt`가 그 사실을 알린다.
+
 ## 개발
 
 ```bash

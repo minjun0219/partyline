@@ -12,6 +12,7 @@ import { ERROR_STATUS, type ErrorCode, errorBody } from "./errors.ts";
 import { RateLimitDO } from "./gate.ts";
 import { joinPage, landingPage, llmsTxt, pickLang, ROBOTS_TXT } from "./landing.ts";
 import { LIMITS, PROTOCOL_VERSIONS } from "./protocol.ts";
+import { pageview, postHogOf } from "./visits.ts";
 
 export { ChannelDO, RateLimitDO };
 
@@ -24,6 +25,14 @@ export interface Env {
    * means open. It gates nothing else.
    */
   RELAY_KEY?: string;
+  /**
+   * Optional page-view counting (visits.ts): a PostHog project token and its
+   * ingestion host. Both or neither; there is no default host. Plain vars,
+   * not secrets — a project token is public by design, web pages embed it —
+   * and they never touch /v1.
+   */
+  POSTHOG_KEY?: string;
+  POSTHOG_HOST?: string;
 }
 
 type Ctx = Context<{ Bindings: Env }>;
@@ -48,6 +57,31 @@ function sourceOf(c: Ctx): string {
 
 function relayKeyOf(env: Env): string | null {
   return env.RELAY_KEY?.trim() || null;
+}
+
+/**
+ * Reports a page view when the operator turned counting on, and says whether
+ * it is on so the page can disclose it. The report never delays or fails the
+ * page: it goes out after the response, and a failure is only logged.
+ */
+function countVisit(c: Ctx): boolean {
+  const posthog = postHogOf(c.env);
+  if (posthog === null) return false;
+  // HEAD runs the GET handlers too; a probe is not a view.
+  if (c.req.method !== "GET") return true;
+  const [url, init] = pageview(posthog, c.req.raw);
+  const sent = fetch(url, init)
+    .then((res) => {
+      if (!res.ok) console.warn("visit count rejected", res.status);
+      return res.body?.cancel();
+    })
+    .catch((err: unknown) => console.warn("visit count failed", err));
+  try {
+    c.executionCtx.waitUntil(sent);
+  } catch {
+    // No execution context to extend (app.fetch called without one); the request still went out.
+  }
+  return true;
 }
 
 function sendError(c: Ctx, code: ErrorCode, message: string) {
@@ -97,12 +131,21 @@ app.onError((err, c) => {
 
 // For the person who opens the relay URL in a browser (?lang=ko for Korean).
 // Everything a program needs is under /v1.
-app.get("/", (c) => c.html(landingPage(pickLang(c.req.query("lang")))));
+app.get("/", (c) => {
+  const counted = countVisit(c);
+  return c.html(landingPage(pickLang(c.req.query("lang")), counted));
+});
 // Where a clicked invite URL lands; the invite stays in the browser (SPEC.md §3, §8).
-app.get("/join", (c) => c.html(joinPage(pickLang(c.req.query("lang")))));
+app.get("/join", (c) => {
+  const counted = countVisit(c);
+  return c.html(joinPage(pickLang(c.req.query("lang")), counted));
+});
 app.get("/robots.txt", (c) => c.text(ROBOTS_TXT));
 // For an agent that was handed the relay URL and nothing else.
-app.get("/llms.txt", (c) => c.text(llmsTxt(relayKeyOf(c.env) !== null)));
+app.get("/llms.txt", (c) => {
+  const counted = countVisit(c);
+  return c.text(llmsTxt({ closed: relayKeyOf(c.env) !== null, counted }));
+});
 
 app.get("/v1/relay", (c) =>
   c.json({

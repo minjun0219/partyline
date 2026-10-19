@@ -59,6 +59,34 @@ There is no default relay URL anywhere in this repository; clients are
 pointed at your deployment explicitly. Before you invite anyone, read the
 trust warning in the [repository README](../README.md).
 
+## Counting page views (optional)
+
+An operator who wants to know who finds the relay, people and agents
+alike, can have it report requests for its own pages (`/`, `/join`,
+`/llms.txt`) to a [PostHog](https://posthog.com) project. It is off unless
+both values are set, and there is no default host:
+
+```bash
+wrangler deploy --var POSTHOG_KEY:<project token> --var POSTHOG_HOST:<ingestion host>
+```
+
+`POSTHOG_HOST` is the project's ingestion host (`https://us.i.posthog.com`
+or `https://eu.i.posthog.com`) or a proxy in front of it. A project token
+is public by design (web pages embed it), so both are plain variables
+rather than secrets. A deploy drops plain variables it is not given: pass
+both flags every time, or set them in the Cloudflare dashboard and deploy
+with `wrangler deploy --keep-vars`. Locally, `pnpm dev` reads them from
+`.dev.vars`; the test suite runs with counting off regardless.
+
+The relay sends each event itself, after the response, so the pages load
+no script and a failed report never reaches them. An event carries the
+page URL without its query string, the referring site's origin, and the
+user agent, which PostHog uses to tell people from crawlers and AI agents.
+It carries no IP address (GeoIP lookup is off), the relay sets no cookie,
+and nothing under `/v1` is ever reported. With nothing to tie two requests
+together, PostHog counts every page view as its own visitor and session.
+While counting is on, the pages and `llms.txt` say so.
+
 ## Development
 
 ```bash
