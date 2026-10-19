@@ -6,6 +6,8 @@
   // creation requires it as a bearer token (invites keep working without):
   //   wrangler secret put RELAY_KEY
   // Never put the key in this file; locally it goes in .dev.vars (gitignored).
+  // Optional page-view counting takes POSTHOG_KEY and POSTHOG_HOST at deploy
+  // time (`--var`, see README.md); an operator's values do not belong here.
   "name": "partyline",
   "main": "src/index.ts",
   "compatibility_date": "2026-08-01",

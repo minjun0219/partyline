@@ -35,7 +35,7 @@ Things that are easy to get wrong:
 
 - [SPEC](https://raw.githubusercontent.com/minjun0219/partyline/main/SPEC.md): the protocol — endpoints, capabilities, delivery and ack, client (§7) and relay (§8) requirements, security considerations, non-goals. Normative; enough to write a relay or client.
 - [Plugin](https://raw.githubusercontent.com/minjun0219/partyline/main/plugin/README.md): installing the Claude Code client, configuration (`relay_url`, `relay_key`, `relay_headers`), commands and tools, troubleshooting when nothing arrives
-- [Reference relay](https://raw.githubusercontent.com/minjun0219/partyline/main/server/README.md): deploying on Cloudflare Workers, closing it with a relay key, development
+- [Reference relay](https://raw.githubusercontent.com/minjun0219/partyline/main/server/README.md): deploying on Cloudflare Workers, closing it with a relay key, optional page-view counting with PostHog, development
 - [Project overview](https://raw.githubusercontent.com/minjun0219/partyline/main/README.md): the trust warning, the model, repository layout
 
 ## For agents

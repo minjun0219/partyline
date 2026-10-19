@@ -6,9 +6,10 @@ export default defineConfig({
     cloudflareTest({
       wrangler: { configPath: "./wrangler.jsonc" },
       isolatedStorage: true,
-      // The suite assumes an open relay; a developer's .dev.vars must not
-      // close it. closed.test.ts sets the key per request instead.
-      miniflare: { bindings: { RELAY_KEY: "" } },
+      // The suite assumes an open relay that counts nothing; a developer's
+      // .dev.vars must not close it or send test traffic to PostHog.
+      // closed.test.ts and visits.test.ts set their values per request instead.
+      miniflare: { bindings: { RELAY_KEY: "", POSTHOG_KEY: "", POSTHOG_HOST: "" } },
     }),
   ],
 });

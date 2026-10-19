@@ -65,6 +65,12 @@ The key is a Worker secret. Never write it into `wrangler.jsonc`, an example, a 
 chat message; locally `pnpm dev` reads it from `.dev.vars`, which is gitignored. It gates
 channel creation only — invites still admit their holders without it.
 
+An operator who wants to see who opens the relay's pages can report requests for `/`, `/join`
+and `/llms.txt` to a PostHog project by deploying with
+`--var POSTHOG_KEY:<project token> --var POSTHOG_HOST:<ingestion host>`. It is off unless both
+are set and has no default host; it sends no IP address and nothing from `/v1`, and the pages
+say so while it is on. Turn it on only when the user asks for it.
+
 ## Configure the client
 
 Only the machine that **creates** channels needs configuration. In

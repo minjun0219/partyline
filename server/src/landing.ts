@@ -3,6 +3,7 @@
 // is where a reader learns what Partyline is and what the relay in front of
 // them can see. Static, self-contained, and it shows nothing about channels:
 // the relay has no interface that lists them, and this page does not start one.
+// When the operator counts page views (visits.ts), the footer says so.
 //
 // English is canonical; the Korean text is a mirror, selected with ?lang=ko.
 
@@ -42,6 +43,7 @@ interface Copy {
   joinKept: string;
   joinHow: string;
   joinNoConfig: string;
+  counted: string;
 }
 
 const COPY: Record<Lang, Copy> = {
@@ -98,6 +100,10 @@ const COPY: Record<Lang, Copy> = {
     joinNoConfig:
       "Nothing else is needed on your side: the invite names the relay, the channel, and " +
       "the token that admits you.",
+    counted:
+      "This relay records page views in PostHog: the page, the referring site, and your " +
+      "browser's user agent. It sets no cookie and does not send your IP address or anything " +
+      "about channels and messages.",
   },
   ko: {
     title: "이 릴레이는 Partyline 을 돌리고 있습니다",
@@ -147,6 +153,10 @@ const COPY: Record<Lang, Copy> = {
       '릴레이에 연결됩니다. 운영자에 관한 안내는 <a href="/">첫 페이지</a>에 있습니다.',
     joinNoConfig:
       "그 밖에 준비할 것은 없습니다. 초대에 릴레이, 채널, 입장 토큰이 모두 들어 있습니다.",
+    counted:
+      "이 릴레이는 페이지 조회를 PostHog에 기록합니다. 보내는 것은 페이지 경로, 들어온 사이트 " +
+      "주소, 브라우저의 User-Agent입니다. 쿠키는 쓰지 않으며 IP 주소와 채널, 메시지에 관한 " +
+      "정보는 보내지 않습니다.",
   },
 };
 
@@ -170,9 +180,10 @@ const STYLE = `
   footer { margin-top: 3rem; font-size: .9rem; color: light-dark(#666, #999); }
 `;
 
-function page(lang: Lang, title: string, body: string): string {
+function page(lang: Lang, title: string, body: string, counted: boolean): string {
   const copy = COPY[lang];
   const other: Lang = lang === "ko" ? "en" : "ko";
+  const countedNote = counted ? `<p>${copy.counted}</p>\n` : "";
   return `<!doctype html>
 <html lang="${lang}">
 <head>
@@ -184,13 +195,13 @@ function page(lang: Lang, title: string, body: string): string {
 <body>
 <a class="lang" href="?lang=${other}" hreflang="${other}">${copy.switchLabel}</a>
 ${body}
-<footer>Partyline — ${copy.by} ${AUTHOR.name} · <a href="${AUTHOR.github}">GitHub</a> · <a href="${AUTHOR.site}">minjun.kim</a></footer>
+<footer>${countedNote}Partyline — ${copy.by} ${AUTHOR.name} · <a href="${AUTHOR.github}">GitHub</a> · <a href="${AUTHOR.site}">minjun.kim</a></footer>
 </body>
 </html>
 `;
 }
 
-export function landingPage(lang: Lang): string {
+export function landingPage(lang: Lang, counted: boolean): string {
   const copy = COPY[lang];
   return page(
     lang,
@@ -208,6 +219,7 @@ ${limitRows(copy)}
 </table>
 <p>${copy.machineReadable}</p>
 <p><a href="${PROJECT_URL}">${copy.projectLink}</a></p>`,
+    counted,
   );
 }
 
@@ -216,7 +228,7 @@ ${limitRows(copy)}
  * fragment, which the browser never sends (SPEC.md §3) — this handler must
  * not go looking for one, and has nothing to look in.
  */
-export function joinPage(lang: Lang): string {
+export function joinPage(lang: Lang, counted: boolean): string {
   const copy = COPY[lang];
   return page(
     lang,
@@ -225,6 +237,7 @@ export function joinPage(lang: Lang): string {
 <p>${copy.joinKept}</p>
 <p>${copy.joinHow}</p>
 <p>${copy.joinNoConfig}</p>`,
+    counted,
   );
 }
 
@@ -241,7 +254,7 @@ Disallow: /
  * the protocol lives. Kept to what an agent can act on; the human page has
  * the rest.
  */
-export function llmsTxt(closed: boolean): string {
+export function llmsTxt({ closed, counted }: { closed: boolean; counted: boolean }): string {
   const limits = (Object.keys(LIMITS) as LimitKey[])
     .map((key) => `- ${key}: ${LIMITS[key]}`)
     .join("\n");
@@ -252,12 +265,18 @@ This relay is closed: creating a channel needs its relay key, which the operator
 out and the client keeps as \`relay_key\` next to \`relay_url\` in its configuration.
 Joining with an invite needs no key.`
     : "";
+  const countedNote = counted
+    ? `
+
+This relay records requests for its pages, this file included, in PostHog: the path, the
+referring site, and the user agent. It sends no IP address, and nothing under /v1 is recorded.`
+    : "";
   return `# Partyline relay
 
 > This server is a Partyline relay: it carries short text messages between AI coding
 > sessions on different machines. Its operator can read every message that passes
 > through it and can inject text into any connected session. Connect only if the
-> operator is trusted.
+> operator is trusted.${countedNote}
 
 Protocol versions served: ${PROTOCOL_VERSIONS.join(", ")}. Limits (also at GET /v1/relay):
 ${limits}
