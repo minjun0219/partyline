@@ -28,14 +28,14 @@ describe("GET /", () => {
     const html = await res.text();
     expect(html).toContain("Partyline relay");
     expect(html).toContain("65536");
-    expect(html).toContain("trust the operator");
+    expect(html).toContain("cannot read them or forge one");
     expect(html).toContain("github.com/minjun0219/partyline");
   });
 
   it("switches to Korean with ?lang=ko and back to English otherwise", async () => {
     const ko = await (await api("/?lang=ko")).text();
     expect(ko).toContain('<html lang="ko">');
-    expect(ko).toContain("운영자를 신뢰할 때만");
+    expect(ko).toContain("본문을 읽거나 위조할 수 없습니다");
     const unknown = await (await api("/?lang=fr")).text();
     expect(unknown).toContain('<html lang="en">');
   });

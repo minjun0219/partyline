@@ -43,7 +43,8 @@ a self-declared `machine_label`, and an optional `about` line.
 
 **Message.** Addressed to exactly one party. The relay places it in that
 party's inbox and deletes it when the recipient acknowledges it. Nothing else is
-retained.
+retained. Its body is encrypted end to end under the channel key (§6), which the
+relay never holds: the relay routes messages it cannot read.
 
 Two properties follow from this shape and are relied on throughout:
 
@@ -64,7 +65,8 @@ One word per concept; the rest of this document uses them exactly as defined her
 | **Session** | The AI coding session on a machine. It becomes a party by joining a channel, one party per channel. |
 | **Client** | The software that speaks this protocol on a session's behalf. §7 binds it. |
 | **User** | The human whose session it is. |
-| **Invite** | A short-lived token, minted by a party, that admits its holder into the channel. Travels as an *invite URL* naming its relay (§3). Handing one over is an *invitation*. |
+| **Invite** | A short-lived token, minted by a party, that admits its holder into the channel. Travels as an *invite URL* naming its relay and carrying the channel key (§3). Handing one over is an *invitation*. |
+| **Channel key** | A 32-byte secret shared by the parties of one channel, made by the client that created it. Bodies are encrypted under it (§6). It travels only in invite URLs and never reaches the relay. |
 | **Relay key** | The one optional secret of a *closed relay* (§8): required to create channels there, and for nothing else. Not a capability — it identifies nobody and reaches no channel. |
 | **Message** | A body addressed by one party to exactly one other. The **sender** and **recipient** are parties. |
 | **Inbox** | A party's queue of undelivered messages, ordered by `seq`. |
@@ -153,19 +155,28 @@ grants nothing inside a channel, and lacking it costs nothing an invite already 
 An invite travels as one string that names the relay it is for:
 
 ```
-<relay_url>/join#<channel_id>/<invite_token>
+<relay_url>/join#<channel_id>/<invite_token>/<channel_key>
 ```
 
 `relay_url` is the relay's `https` URL with no query or fragment; the invite URL is
-that URL, the path `/join`, and the channel identifier and invite token in the
-fragment. Clients MUST accept this form in place of a bare token and MUST recover the
-relay URL from it — an invite is complete on its own, so a session that has never
-configured a relay can join with nothing else. Clients SHOULD present invites they mint
-in this form.
+that URL, the path `/join`, and the channel identifier, invite token and channel key
+in the fragment. `channel_key` is the channel's 32-byte key in base64url without
+padding (43 characters); it is the last segment, so an invite token that contains `/`
+still parses. Clients MUST accept this form in place of a bare token and MUST recover
+the relay URL and the channel key from it — an invite is complete on its own, so a
+session that has never configured a relay can join with nothing else. Clients MUST
+present invites they mint in this form, and MUST refuse an invite without a valid
+channel key: there is no unencrypted channel to join.
 
-The token is in the fragment because browsers do not send fragments: someone who opens
-the URL by mistake reaches the relay's `/join` page (§8) and the credential never
-appears in an access log or a `Referer` header.
+The token and the key are in the fragment because browsers do not send fragments:
+someone who opens the URL by mistake reaches the relay's `/join` page (§8) and neither
+secret appears in an access log or a `Referer` header. Clients MUST NOT send the
+channel key to the relay in any request.
+
+An invite URL outlives its token. The token expires (§4), but the channel key in it
+stays valid for as long as the channel exists, and anyone holding it can read every
+body of that channel that they can get from the relay. Treat an invite URL as secret
+even after it has expired or been used; when one has leaked, destroy the channel (§4).
 
 Joining an invite is choosing its relay, with everything that means (§9): a client MUST
 show which relay an invite leads to when it joins, and MUST NOT act on an invite that
@@ -199,6 +210,10 @@ nothing to recover it from, by design (§10).
   "invite": { "token": "…", "expires_at": "2026-09-01T13:00:00.000Z", "uses_remaining": 1 }
 }
 ```
+
+The relay returns no channel key and never sees one. The creating client generates the
+key — 32 bytes from a cryptographically secure source — and puts it into every invite
+URL for the channel.
 
 Creating a channel does **not** join it. The creator uses the returned invite like
 anyone else — a client MAY do both in one step, since a user who asked to create a
@@ -322,8 +337,9 @@ party list and sends N messages, which keeps the "one message wakes one session"
 property intact.
 
 `body` is UTF-8 text. Relays MUST accept at least 16 KiB and MUST publish their limit in
-`GET /v1/relay`. `reply_to` is an optional `message_id` the client received earlier; the
-relay does not interpret it.
+`GET /v1/relay`. Clients send only sealed bodies (§6, *Encrypted bodies*), which are
+about a third larger than the text they carry. `reply_to` is an optional `message_id`
+the client received earlier; the relay does not interpret it.
 
 ```json
 {
@@ -381,6 +397,63 @@ tolerate duplicates — deduplicating on `seq` is sufficient.
   "reply_to": null
 }
 ```
+
+### Encrypted bodies
+
+The relay treats `body` as opaque text. Clients put a sealed message there:
+
+```
+body      = "pl1." base64url(nonce || ciphertext || tag)
+key       = HKDF-SHA256(ikm = channel_key, salt = UTF-8(channel_id),
+                        info = "partyline e2e v1", length = 32)
+aad       = UTF-8("partyline e2e v1" LF channel_id)
+plaintext = UTF-8(JSON object below)
+```
+
+The cipher is AES-256-GCM with a random 12-byte `nonce` per message and a 16-byte
+`tag`; base64url is without padding. The plaintext is a JSON object with six string
+fields, all REQUIRED:
+
+```json
+{
+  "id": "4b1f0c2e-…",
+  "from": "p_Bd30nq",
+  "from_name": "workshop-main",
+  "to": "p_Ka81mz",
+  "sent_at": "2026-09-01T12:45:02.093Z",
+  "body": "tag pushed, gate is green"
+}
+```
+
+`id` is chosen by the sender at random (a UUID is enough) and is distinct from the
+relay's `message_id`. `from` and `to` are party ids, `from_name` is the sender's
+display name when it sent, and `sent_at` is the sender's clock. The envelope's own
+fields stay in the clear because the relay needs them to route; inside the ciphertext
+they are the sender's word, which the relay cannot change.
+
+A recipient MUST check, before the message reaches the session:
+
+1. `body` starts with `pl1.` and opens with the channel key. A plaintext body is
+   refused: anyone without the key — the relay first of all — can produce one.
+2. The sealed `to` and the envelope's `to` are the recipient's own party id, and the
+   sealed `from` equals the envelope's `from.party_id`. This refuses a sealed message
+   the relay has rerouted to another party or attributed to another sender.
+3. `sent_at` is no older than `message_ttl` and no further in the future than the clock
+   skew the client allows (5 minutes RECOMMENDED), with the same skew allowed on the
+   old side.
+4. `id` has not been delivered to the session before. Clients keep the ids they
+   delivered for as long as check 3 would still accept them.
+
+A message that fails any check is not delivered. The client acknowledges it like a
+delivered one, so it does not block the inbox, and MUST make the refusal visible to
+the user (§7.4 applies to what is dropped as much as to what is sent). Clients SHOULD
+show the sealed `from_name` rather than the envelope's `display_name`, since only the
+former came from the sender. Record an `id` only once its message has reached the
+session: the relay redelivers what was not acknowledged (above), and that copy is not
+a replay.
+
+The `pl1.` prefix names this format. A later format takes another prefix and key
+derivation label; clients MUST NOT deliver a body whose format they do not know.
 
 ### WebSocket — the normative transport
 
@@ -502,6 +575,9 @@ lives, so a client that skips them is not a conforming Partyline client.
 7. Clients SHOULD prefer a local mechanism when both sessions are on the same machine.
    A relay is for crossing machines; routing local traffic through one sends it off the
    machine for no benefit.
+8. **Bodies MUST be sealed, and received bodies verified, as §6 describes.** The relay
+   cannot tell a sealed body from any other text, so this rests on clients alone. The
+   channel key is a credential under 7.6, and is never sent to the relay (§3).
 
 ---
 
@@ -512,6 +588,7 @@ A conforming relay:
 - MUST serve every endpoint in §4–§6 and `GET /v1/relay`, over TLS.
 - MUST NOT retain message bodies after acknowledgement, expiry, or channel destruction,
   and MUST NOT expose any interface that returns messages to anyone but their recipient.
+- MUST carry `body` as opaque text. It is ciphertext the relay cannot read (§6).
 - MUST NOT confirm the existence of a channel to anyone who is not a party to it. An unknown channel,
   an invalid party token, and an invalid invite all return `not_found` — anything
   else turns error codes into an existence oracle. (A destroyed channel answers `gone`
@@ -568,11 +645,14 @@ Configurable parameters and their recommended defaults:
 
 ## 9. Security considerations
 
-**The relay operator sees everything and can inject anything.** Bodies are plaintext to
-the relay, and a hostile or compromised relay can deliver messages that appear to come
-from any party. Since those messages become input to a coding session, this is not
-an eavesdropping risk but a control risk. Choosing the relay is the primary defense; the
-protocol has no way to make an untrusted relay safe.
+**The relay operator sees who talks to whom, but not what is said.** Bodies are sealed
+under a key the relay never holds (§6), so a hostile or compromised relay can neither
+read them nor deliver a message that a client will accept as a party's. It still sees
+everything else: the channel and party structure, display names, machine labels and
+`about` lines, who addresses whom, when, and how large each body is. It can also drop,
+delay, or withhold messages, and list parties that are not there — a party it invents
+cannot read what is sent to it, but a sender may wait on it. Choosing the relay is still
+a defense; it is no longer the only one against injection.
 
 **Received text is a prompt injection vector.** It arrives from another session, which
 may be acting on text it received from somewhere else. The dangerous case is not a
@@ -596,10 +676,15 @@ burned channel, which is also exactly the remedy you need when an insider turns 
 to deserve the trust. What the protocol will not do is let anyone *outside* the
 invitation chain affect a channel at all.
 
-**No end-to-end encryption in v1.** `body` is opaque to the relay's logic, so clients
-that share a key can encrypt it themselves, but nothing in the protocol supports key
-exchange and the relay still controls delivery and can forge senders. Encryption would
-address confidentiality, not injection.
+**What end-to-end encryption does not cover.** The channel key is shared by every
+party, so it authenticates the channel, not the person: any party can seal a message
+that names another party as its sender. That is the same trust the invitation already
+grants (above), and it is why the remedy is still destroying the channel. There is no
+forward secrecy and no rekeying within a channel: whoever obtains the key — from a
+leaked invite URL, expired or not (§3) — can read every body they can get from the
+relay, and destroying the channel and re-forming it with fresh invites is the rotation.
+Encryption does not make received text safe either: a party's own message is as much a
+prompt injection vector as before, and §7.3 still applies.
 
 **Token handling.** Invite and party tokens are bearer tokens. Relays SHOULD
 store them hashed, MUST transmit them only over TLS, and MUST NOT log them. Clients

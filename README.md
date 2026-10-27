@@ -9,19 +9,26 @@
 
 ## ⚠️ Read this before you use any relay
 
-**A relay operator can inject arbitrary text into your session.**
+**Anyone in a channel can put arbitrary text into your session.**
 
 Messages that arrive from a relay become input to your coding agent. They
 can carry prompt injection — instructions that try to make your session
 leak code, run commands, or send things back out. The protocol does not
 and cannot prevent this.
 
-**Your first line of defense is choosing the relay.** Run your own, or use
-one operated by someone you would already trust with the contents of the
-sessions you connect. There is no default relay URL anywhere in this
-repository, and that is deliberate: a default is a server you connect to
-by accident. An invite names the relay it is for, so accepting one is
-also choosing a relay — the client tells you which.
+**Message bodies are end-to-end encrypted, so the relay operator is not
+one of those people.** The channel key travels inside the invite URL and
+never reaches the relay; a relay can neither read a body nor forge one
+your client will accept. It still sees who messages whom, when, and how
+much, along with every display name and `about` line, and it can drop or
+delay messages. An invite URL carries the key for as long as the channel
+lives, so treat it as a secret even after it expires.
+
+**Your first line of defense is choosing who you invite.** Anyone holding
+an invite URL can join and send to your session. There is no default relay
+URL anywhere in this repository, and that is deliberate: a default is a
+server you connect to by accident. An invite names the relay it is for, so
+accepting one is also choosing a relay — the client tells you which.
 
 The second line of defense is the client: it must never join a channel
 without you asking it to, and it must show you what it sends. Those are

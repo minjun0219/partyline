@@ -13,9 +13,12 @@ import {
   saveSeat,
   type Seat,
 } from "../src/config.ts";
+import { generateChannelKey } from "../src/e2e.ts";
 import { formatInviteUrl, parseInviteUrl } from "../src/invite.ts";
 import { ChannelConnection } from "../src/receive.ts";
 import { buildWireLine, formatInjection } from "../src/session.ts";
+
+const KEY = generateChannelKey();
 
 let dir: string | null = null;
 function tempEnv(): NodeJS.ProcessEnv {
@@ -181,6 +184,8 @@ describe("seats", () => {
     party_token: "pt_x",
     display_name: "alpha",
     last_injected_seq: 0,
+    channel_key: KEY,
+    seen_ids: {},
   };
 
   it("persists, updates, and drops seats per channel", () => {
@@ -218,6 +223,19 @@ describe("seats", () => {
     });
   });
 
+  it("leaves out a seat from before encryption, without deleting it", () => {
+    const env = tempEnv();
+    const { channel_key: _omitted, ...plain } = { ...seat, channel_id: "c_plain" };
+    saveSeat(plain as unknown as Seat, env);
+    // No key can be recovered for it, so it cannot be resumed.
+    expect(loadSeats(env).c_plain).toBeUndefined();
+    const raw = JSON.parse(readFileSync(join(configDir(env), "seats.json"), "utf8")) as Record<
+      string,
+      unknown
+    >;
+    expect(Object.keys(raw)).toEqual(["c_plain"]);
+  });
+
   it("keeps seats it cannot read when writing others (a filter is not a migration)", () => {
     const env = tempEnv();
     const { relay_url: _omitted, ...legacy } = seat;
@@ -240,23 +258,28 @@ describe("invite URL (SPEC.md §3)", () => {
     relay_url: "https://relay.example",
     channel_id: "c_4nRt9v",
     invite_token: "iv_abc-D_e",
+    channel_key: KEY,
   };
 
-  it("round-trips through <relay>/join#<channel>/<token>", () => {
+  it("round-trips through <relay>/join#<channel>/<token>/<key>", () => {
     const url = formatInviteUrl(invite);
-    expect(url).toBe("https://relay.example/join#c_4nRt9v/iv_abc-D_e");
+    expect(url).toBe(`https://relay.example/join#c_4nRt9v/iv_abc-D_e/${KEY}`);
     expect(parseInviteUrl(url)).toEqual(invite);
   });
 
   it("tolerates a trailing slash on the relay URL", () => {
     expect(formatInviteUrl({ ...invite, relay_url: "https://relay.example/" })).toBe(
-      "https://relay.example/join#c_4nRt9v/iv_abc-D_e",
+      `https://relay.example/join#c_4nRt9v/iv_abc-D_e/${KEY}`,
     );
   });
 
   it("keeps a path prefix in front of the relay", () => {
-    const url = "https://host.example/partyline/join#c_1/iv_1";
+    const url = `https://host.example/partyline/join#c_1/iv_1/${KEY}`;
     expect(parseInviteUrl(url)?.relay_url).toBe("https://host.example/partyline");
+  });
+
+  it("takes the token as the relay wrote it, slashes included", () => {
+    expect(parseInviteUrl(`https://relay.example/join#c_1/iv/1/${KEY}`)?.invite_token).toBe("iv/1");
   });
 
   it("rejects anything that is not an invite URL", () => {
@@ -268,6 +291,10 @@ describe("invite URL (SPEC.md §3)", () => {
       "https://relay.example/invite#c_1/iv_1",
       "https://relay.example/join?x=1#c_1/iv_1",
       "ftp://relay.example/join#c_1/iv_1",
+      // no channel key: every channel is encrypted (SPEC.md §3)
+      "https://relay.example/join#c_1/iv_1",
+      "https://relay.example/join#c_1/iv_1/short",
+      `https://relay.example/join#c_1//${KEY}`,
     ]) {
       expect(parseInviteUrl(bad), bad).toBeNull();
     }
@@ -304,16 +331,30 @@ describe("injection text", () => {
     reply_to: null,
   };
 
-  it("carries sender, machine and message_id ahead of the body", () => {
-    const text = formatInjection(envelope, "release");
+  const message = {
+    id: "m_1",
+    from: "p_1",
+    from_name: "alice",
+    to: "p_2",
+    sent_at: "2026-09-02T00:00:00.000Z",
+    body: "tag pushed",
+  };
+
+  it("carries sender, machine and message_id ahead of the decrypted body", () => {
+    const text = formatInjection({ ...envelope, body: "pl1.opaque" }, message, "release");
     expect(text).toBe(
-      "partyline · alice @ laptop → you · channel release · id x_abc\n\ntag pushed",
+      "partyline · alice @ laptop → you · channel release · id x_abc · encrypted\n\ntag pushed",
     );
   });
 
+  it("names the sender as the ciphertext does, not as the relay does", () => {
+    const relabelled = { ...envelope, from: { ...envelope.from, display_name: "mallory" } };
+    expect(formatInjection(relabelled, message, "release")).toMatch(/^partyline · alice @/);
+  });
+
   it("names the message being replied to when there is one", () => {
-    expect(formatInjection({ ...envelope, reply_to: "x_prev" }, "release")).toContain(
-      "id x_abc · reply_to x_prev\n\n",
+    expect(formatInjection({ ...envelope, reply_to: "x_prev" }, message, "release")).toContain(
+      "encrypted · reply_to x_prev\n\n",
     );
   });
 });
@@ -342,6 +383,8 @@ describe("stream watchdog", () => {
         party_token: "t",
         display_name: "me",
         last_injected_seq: 0,
+        channel_key: KEY,
+        seen_ids: {},
       },
       persistSeat: () => {},
       inject: async () => {},
@@ -405,6 +448,8 @@ describe("stream watchdog", () => {
         party_token: "t",
         display_name: "me",
         last_injected_seq: 0,
+        channel_key: KEY,
+        seen_ids: {},
       },
       persistSeat: () => {},
       inject: async () => {},
@@ -478,6 +523,8 @@ describe("access-layer headers on the wire", () => {
       party_token: "pt",
       display_name: "me",
       last_injected_seq: 0,
+      channel_key: KEY,
+      seen_ids: {},
     };
     const connection = new ChannelConnection({
       relayUrl: mine.url,

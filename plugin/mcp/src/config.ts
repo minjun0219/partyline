@@ -46,6 +46,10 @@ export interface Seat {
   display_name: string;
   /** Highest seq already injected into a session — the dedupe cursor. */
   last_injected_seq: number;
+  /** The channel's end-to-end key, from the invite (SPEC.md §3). Never sent to the relay. */
+  channel_key: string;
+  /** Ids of sealed messages already injected → epoch ms they may be forgotten (replay guard). */
+  seen_ids: Record<string, number>;
 }
 
 export function configDir(env: NodeJS.ProcessEnv = process.env): string {
@@ -182,11 +186,15 @@ export function loadSeats(env: NodeJS.ProcessEnv = process.env): Record<string, 
   // then config held the only relay there was, so filling it in from config
   // is a fact about that seat, not a default. Without config the seat cannot
   // be resumed and is left out of the view — not out of the file.
+  // Seats written before channels were encrypted have no channel_key, and
+  // nothing can supply one: they are left out the same way.
   const legacyRelay = loadConfig(env).relay_url;
   const seats: Record<string, Seat> = {};
-  for (const [id, seat] of Object.entries(readRawSeats(env))) {
-    if (typeof seat.relay_url === "string") seats[id] = seat as Seat;
-    else if (legacyRelay) seats[id] = { ...(seat as Seat), relay_url: legacyRelay };
+  for (const [id, raw] of Object.entries(readRawSeats(env))) {
+    if (typeof raw.channel_key !== "string") continue;
+    const seat = { ...(raw as Seat), seen_ids: raw.seen_ids ?? {} };
+    if (typeof seat.relay_url === "string") seats[id] = seat;
+    else if (legacyRelay) seats[id] = { ...seat, relay_url: legacyRelay };
   }
   return seats;
 }

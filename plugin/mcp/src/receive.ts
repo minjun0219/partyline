@@ -1,7 +1,8 @@
 // The receive side: one WebSocket subscription per joined channel, with the
 // delivery discipline that makes at-least-once safe end to end:
 //
-//   dedupe (seq cursor) → inject into the session → persist cursor → ack
+//   dedupe (seq cursor) → verify (decrypt, check) → inject into the session
+//   → persist cursor → ack
 //
 // An injection failure stops everything for that channel until reconnect —
 // acking anything after a failed inject would move the relay's cursor past a
@@ -10,6 +11,7 @@
 
 import WebSocket, { type RawData } from "ws";
 import type { Seat } from "./config.ts";
+import { remember, type SealedMessage, verify } from "./e2e.ts";
 import { accessHeadersFor } from "./relay.ts";
 import type { MessageEnvelope, ServerFrame } from "./types.ts";
 
@@ -36,7 +38,8 @@ export interface ConnectionDeps {
   relayUrl: string;
   seat: Seat;
   persistSeat(seat: Seat): void;
-  inject(envelope: MessageEnvelope): Promise<void>;
+  /** Hands over the envelope and what its body decrypted to — only the latter is the sender's word. */
+  inject(envelope: MessageEnvelope, message: SealedMessage): Promise<void>;
   /** One-line status notes surfaced through partyline_status. */
   note(text: string): void;
   /** Watchdog thresholds — overridable for tests only. */
@@ -49,6 +52,8 @@ export type ConnectionStatus = "connecting" | "connected" | "backoff" | "stopped
 export class ChannelConnection {
   status: ConnectionStatus = "connecting";
   injected = 0;
+  /** Messages refused before injection: plaintext, undecryptable, rerouted or replayed. */
+  rejected = 0;
   lastError: string | null = null;
   /** Epoch ms of lastError — so an outage can be dated without the user's memory. */
   lastErrorAt: number | null = null;
@@ -224,8 +229,28 @@ export class ChannelConnection {
       this.ack(ws, envelope.seq);
       return;
     }
+    const verdict = verify(
+      seat.channel_key,
+      seat.channel_id,
+      seat.party_id,
+      envelope,
+      seat.seen_ids,
+    );
+    if (!verdict.ok) {
+      // Not from anyone holding the channel key, or not for us now: the
+      // relay (or something behind it) produced it. Nothing to deliver, so
+      // move the cursor past it — but say so where the user looks.
+      this.rejected += 1;
+      this.deps.note(
+        `refused message seq ${envelope.seq} claiming to be from ${envelope.from.display_name}: ${verdict.reason}`,
+      );
+      seat.last_injected_seq = envelope.seq;
+      this.deps.persistSeat(seat);
+      this.ack(ws, envelope.seq);
+      return;
+    }
     try {
-      await this.deps.inject(envelope);
+      await this.deps.inject(envelope, verdict.message);
     } catch (err) {
       // Ack nothing, close, and let the reconnect replay from the inbox.
       this.fail(`inject failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -238,6 +263,7 @@ export class ChannelConnection {
     }
     this.injected += 1;
     seat.last_injected_seq = envelope.seq;
+    remember(seat.seen_ids, verdict.message);
     // Persist before acking: if we crash between the two, the message is
     // re-delivered and the cursor skips the duplicate injection.
     this.deps.persistSeat(seat);

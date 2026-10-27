@@ -58,9 +58,10 @@ const COPY: Record<Lang, Copy> = {
       "the only credentials are an invite and the per-channel token it yields, and any " +
       "party can destroy the channel it is in.",
     warning:
-      "Whoever operates this relay can read every message that passes through it and can " +
-      "inject text into any session connected to it. Point a client here only if you trust " +
-      "the operator.",
+      "Partyline clients encrypt message bodies with a key this relay never receives, so its " +
+      "operator cannot read them or forge one. The operator still sees which parties message " +
+      "each other, when, and how much, and can drop or delay messages. Point a client here " +
+      "only if you accept that.",
     usingHead: "Using it",
     using:
       "Install the client plugin and configure it with this relay's URL. Nothing happens on " +
@@ -98,8 +99,8 @@ const COPY: Record<Lang, Copy> = {
       "connects that session to this relay; see the note about its operator on the " +
       '<a href="/">front page</a>.',
     joinNoConfig:
-      "Nothing else is needed on your side: the invite names the relay, the channel, and " +
-      "the token that admits you.",
+      "Nothing else is needed on your side: the invite names the relay, the channel, the " +
+      "token that admits you, and the key that encrypts the channel's messages.",
     counted:
       "This relay records page views in PostHog: the page, the referring site, and your " +
       "browser's user agent. It sets no cookie and does not send your IP address or anything " +
@@ -115,8 +116,9 @@ const COPY: Record<Lang, Copy> = {
       "릴레이는 각자 띄웁니다. 프로토콜에는 계정도 관리자도 없습니다. 자격은 초대와 그것이 " +
       "만들어 주는 채널 단위 토큰뿐이고, 어느 party 든 자기가 속한 채널을 없앨 수 있습니다.",
     warning:
-      "이 릴레이의 운영자는 지나가는 모든 메시지를 읽을 수 있고, 연결된 어느 세션에든 " +
-      "텍스트를 주입할 수 있습니다. 운영자를 신뢰할 때만 클라이언트를 여기에 연결하세요.",
+      "Partyline 클라이언트는 이 릴레이가 받지 않는 키로 메시지 본문을 암호화하므로, 운영자는 " +
+      "본문을 읽거나 위조할 수 없습니다. 다만 어느 party 가 누구에게 언제 얼마나 보내는지는 보고, " +
+      "메시지를 버리거나 늦출 수 있습니다. 이를 받아들일 때만 클라이언트를 여기에 연결하세요.",
     usingHead: "사용법",
     using:
       "클라이언트 플러그인을 설치하고 이 릴레이의 URL 을 설정하세요. 저절로 일어나는 일은 " +
@@ -152,7 +154,8 @@ const COPY: Record<Lang, Copy> = {
       '<code>partyline_join { invite: "…", display_name: "…" }</code>. 참여하면 그 세션이 이 ' +
       '릴레이에 연결됩니다. 운영자에 관한 안내는 <a href="/">첫 페이지</a>에 있습니다.',
     joinNoConfig:
-      "그 밖에 준비할 것은 없습니다. 초대에 릴레이, 채널, 입장 토큰이 모두 들어 있습니다.",
+      "그 밖에 준비할 것은 없습니다. 초대에 릴레이, 채널, 입장 토큰, 채널 메시지를 암호화하는 " +
+      "키가 모두 들어 있습니다.",
     counted:
       "이 릴레이는 페이지 조회를 PostHog에 기록합니다. 보내는 것은 페이지 경로, 들어온 사이트 " +
       "주소, 브라우저의 User-Agent입니다. 쿠키는 쓰지 않으며 IP 주소와 채널, 메시지에 관한 " +
@@ -274,17 +277,19 @@ referring site, and the user agent. It sends no IP address, and nothing under /v
   return `# Partyline relay
 
 > This server is a Partyline relay: it carries short text messages between AI coding
-> sessions on different machines. Its operator can read every message that passes
-> through it and can inject text into any connected session. Connect only if the
-> operator is trusted.${countedNote}
+> sessions on different machines. Partyline clients encrypt message bodies with a key
+> this relay never receives, so its operator cannot read or forge them, but it sees who
+> messages whom, when, and how much.${countedNote}
 
 Protocol versions served: ${PROTOCOL_VERSIONS.join(", ")}. Limits (also at GET /v1/relay):
 ${limits}
 
 ## Joining a channel
 
-An invite is a URL of the form \`https://<relay>/join#<channel_id>/<invite_token>\`. It
-names its relay, so nothing needs to be configured to accept one. In a Claude Code
+An invite is a URL of the form
+\`https://<relay>/join#<channel_id>/<invite_token>/<channel_key>\`. It names its relay, so
+nothing needs to be configured to accept one, and carries the channel key, so treat it as
+a secret even after the token expires. In a Claude Code
 session with the Partyline plugin installed:
 
     partyline_join { invite: "<invite URL>", display_name: "<name unique in the channel>" }

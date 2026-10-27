@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadConfig, type Seat, saveConfig } from "../src/config.ts";
+import { generateChannelKey, type SealedMessage, seal } from "../src/e2e.ts";
 import { ChannelConnection } from "../src/receive.ts";
 import * as relay from "../src/relay.ts";
 import type { MessageEnvelope } from "../src/types.ts";
@@ -20,6 +21,7 @@ import type { MessageEnvelope } from "../src/types.ts";
 const PORT = 8971;
 const RELAY = `http://127.0.0.1:${PORT}`;
 const SERVER_DIR = join(import.meta.dirname, "..", "..", "..", "server");
+const KEY = generateChannelKey();
 
 let relayProcess: ChildProcess;
 let env: NodeJS.ProcessEnv;
@@ -56,17 +58,18 @@ afterAll(() => {
 });
 
 function collect(seat: Seat) {
-  const injected: MessageEnvelope[] = [];
+  const injected: SealedMessage[] = [];
+  const notes: string[] = [];
   const connection = new ChannelConnection({
     relayUrl: RELAY,
     seat,
     persistSeat: () => {},
-    inject: async (envelope) => {
-      injected.push(envelope);
+    inject: async (_envelope: MessageEnvelope, message) => {
+      injected.push(message);
     },
-    note: () => {},
+    note: (note) => notes.push(note),
   });
-  return { injected, connection };
+  return { injected, notes, connection };
 }
 
 async function until(check: () => boolean, what: string, timeoutMs = 10_000): Promise<void> {
@@ -112,7 +115,11 @@ describe("client against the reference relay", () => {
       party_token: b.party_token,
       display_name: "beta",
       last_injected_seq: 0,
+      channel_key: KEY,
+      seen_ids: {},
     };
+    const sealFor = (body: string) =>
+      seal(KEY, created.channel_id, { from: a.party_id, from_name: "alpha", to: b.party_id, body });
 
     // stream delivery with ack-after-inject
     const first = collect(seatB);
@@ -124,22 +131,36 @@ describe("client against the reference relay", () => {
       created.channel_id,
       a.party_token,
       b.party_id,
-      "hello across processes",
+      sealFor("hello across processes"),
     );
     expect(sent.recipient.display_name).toBe("beta");
     expect(sent.recipient.online).toBe(true);
 
     await until(() => first.injected.length === 1, "first delivery");
     expect(first.injected[0]?.body).toBe("hello across processes");
-    expect(first.injected[0]?.from.display_name).toBe("alpha");
+    expect(first.injected[0]?.from_name).toBe("alpha");
     expect(seatB.last_injected_seq).toBe(1);
+
+    // a plaintext body — what anyone without the key could send — is
+    // refused, acked away, and noted where the user looks
+    await relay.sendMessage(RELAY, created.channel_id, a.party_token, b.party_id, "plain");
+    await until(() => first.notes.length === 1, "refusal note");
+    expect(first.notes[0]).toContain("plaintext body");
+    expect(first.injected).toHaveLength(1);
+    expect(seatB.last_injected_seq).toBe(2);
     first.connection.stop();
 
     // acked messages do not come back; the cursor survives the "restart"
     const second = collect(seatB);
     second.connection.start();
     await until(() => second.connection.status === "connected", "reconnect");
-    await relay.sendMessage(RELAY, created.channel_id, a.party_token, b.party_id, "second");
+    await relay.sendMessage(
+      RELAY,
+      created.channel_id,
+      a.party_token,
+      b.party_id,
+      sealFor("second"),
+    );
     await until(() => second.injected.length >= 1, "second delivery");
     expect(second.injected.map((m) => m.body)).toEqual(["second"]);
     second.connection.stop();
