@@ -16,6 +16,10 @@ source), and `SPEC.md` is a draft that may break without a migration path.
 - Invites without a channel key are refused, and seats saved before this change cannot be
   resumed: recreate those channels and hand out fresh invites. The seats stay in
   `seats.json` untouched.
+- The sealed message carries the sender's machine label (`from_label`), and the injected
+  header takes name and machine from the ciphertext only. A message whose relay-assigned
+  `message_id` or `reply_to` is not a plain identifier (1–64 of `A-Z a-z 0-9 _ -`,
+  SPEC.md §5) is refused, so no relay-written text reaches the session.
 
 ### Changed
 

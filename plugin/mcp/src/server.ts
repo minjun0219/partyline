@@ -484,6 +484,7 @@ server.registerTool(
       const sealed = seal(entry.seat.channel_key, entry.seat.channel_id, {
         from: entry.seat.party_id,
         from_name: entry.seat.display_name,
+        from_label: loadConfig().machine_label,
         to: recipientId,
         body,
       });

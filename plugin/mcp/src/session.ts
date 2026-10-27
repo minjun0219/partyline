@@ -68,9 +68,11 @@ export function resolveSelf(env: NodeJS.ProcessEnv = process.env): SessionSelf |
  * `from` field, so everything the session needs to act on the message — who
  * sent it, from where, and the id to put in reply_to — has to be in the text.
  * One header line, then the body verbatim. The header is the client's; the
- * body is the sender's (SPEC.md §7.3). The name comes from inside the
- * ciphertext, where the relay cannot change it; the machine label is the
- * relay's report and is shown as such only by position.
+ * body is the sender's (SPEC.md §7.3). Name and machine label come from
+ * inside the ciphertext, where the relay cannot change them, and the ids were
+ * checked to be plain identifiers (e2e.ts verify), so no relay text reaches
+ * the header. Control characters in the sender's own fields are flattened so
+ * the header stays one line.
  */
 export function formatInjection(
   envelope: MessageEnvelope,
@@ -78,13 +80,17 @@ export function formatInjection(
   channelLabel: string,
 ): string {
   const parts = [
-    `partyline · ${message.from_name} @ ${envelope.from.machine_label} → you`,
+    `partyline · ${oneLine(message.from_name)} @ ${oneLine(message.from_label)} → you`,
     `channel ${channelLabel}`,
     `id ${envelope.message_id}`,
     "encrypted",
   ];
   if (envelope.reply_to) parts.push(`reply_to ${envelope.reply_to}`);
   return `${parts.join(" · ")}\n\n${message.body}`;
+}
+
+function oneLine(value: string): string {
+  return value.replace(/\p{Cc}+/gu, " ");
 }
 
 /** The NDJSON line the session socket accepts. `session_id` must match the

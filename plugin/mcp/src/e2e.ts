@@ -17,6 +17,8 @@ export interface SealedMessage {
   id: string;
   from: string;
   from_name: string;
+  /** The sender's machine label. Sealed so the relay cannot rewrite it. */
+  from_label: string;
   to: string;
   sent_at: string;
   body: string;
@@ -58,6 +60,7 @@ export function seal(
     id: randomUUID(),
     from: message.from,
     from_name: message.from_name,
+    from_label: message.from_label,
     to: message.to,
     sent_at: now.toISOString(),
     body: message.body,
@@ -96,7 +99,7 @@ export function open(channelKey: string, channelId: string, body: string): Seale
   } catch {
     return null;
   }
-  const fields = ["id", "from", "from_name", "to", "sent_at", "body"] as const;
+  const fields = ["id", "from", "from_name", "from_label", "to", "sent_at", "body"] as const;
   if (!parsed || fields.some((f) => typeof parsed[f] !== "string")) return null;
   return parsed as SealedMessage;
 }
@@ -105,13 +108,17 @@ export function open(channelKey: string, channelId: string, body: string): Seale
 const MAX_AGE_MS = 86_400_000;
 /** Clock skew tolerated between sender and recipient. */
 const SKEW_MS = 5 * 60_000;
+/** What a relay-assigned id may look like (SPEC.md §5). It reaches the session
+ * in the injected header, so anything wider is relay text in the session. */
+const RELAY_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
 export type Verdict = { ok: true; message: SealedMessage } | { ok: false; reason: string };
 
 /**
  * The checks before a body reaches the session (SPEC.md §7.3). A relay
  * without the key can still hand over plaintext, reroute a sealed message to
- * another party, or deliver an old one again; each is refused here. `seen`
+ * another party, deliver an old one again, or dress its own ids up as text
+ * for the session; each is refused here. `seen`
  * maps the ids already injected to when they may be forgotten; it is pruned
  * in place, and the caller records an id with remember() only once the
  * message has reached the session — an id recorded before a failed inject
@@ -121,12 +128,24 @@ export function verify(
   channelKey: string,
   channelId: string,
   self: string,
-  envelope: { from: { party_id: string }; to: string; body: string },
+  envelope: {
+    message_id: string;
+    from: { party_id: string };
+    to: string;
+    body: string;
+    reply_to: string | null;
+  },
   seen: Record<string, number>,
   now: number = Date.now(),
 ): Verdict {
   for (const [id, until] of Object.entries(seen)) {
     if (until <= now) delete seen[id];
+  }
+  if (
+    !RELAY_ID.test(envelope.message_id) ||
+    (envelope.reply_to !== null && !RELAY_ID.test(envelope.reply_to))
+  ) {
+    return { ok: false, reason: "relay-assigned id is not a plain identifier" };
   }
   if (!isSealed(envelope.body)) return { ok: false, reason: "plaintext body" };
   const message = open(channelKey, channelId, envelope.body);

@@ -119,7 +119,13 @@ describe("client against the reference relay", () => {
       seen_ids: {},
     };
     const sealFor = (body: string) =>
-      seal(KEY, created.channel_id, { from: a.party_id, from_name: "alpha", to: b.party_id, body });
+      seal(KEY, created.channel_id, {
+        from: a.party_id,
+        from_name: "alpha",
+        from_label: "laptop",
+        to: b.party_id,
+        body,
+      });
 
     // stream delivery with ack-after-inject
     const first = collect(seatB);

@@ -25367,6 +25367,7 @@ function seal(channelKey, channelId, message, now = /* @__PURE__ */ new Date()) 
     id: (0, import_node_crypto.randomUUID)(),
     from: message.from,
     from_name: message.from_name,
+    from_label: message.from_label,
     to: message.to,
     sent_at: now.toISOString(),
     body: message.body
@@ -25403,15 +25404,19 @@ function open(channelKey, channelId, body) {
   } catch {
     return null;
   }
-  const fields = ["id", "from", "from_name", "to", "sent_at", "body"];
+  const fields = ["id", "from", "from_name", "from_label", "to", "sent_at", "body"];
   if (!parsed || fields.some((f) => typeof parsed[f] !== "string")) return null;
   return parsed;
 }
 var MAX_AGE_MS = 864e5;
 var SKEW_MS = 5 * 6e4;
+var RELAY_ID = /^[A-Za-z0-9_-]{1,64}$/;
 function verify(channelKey, channelId, self, envelope, seen, now = Date.now()) {
   for (const [id, until] of Object.entries(seen)) {
     if (until <= now) delete seen[id];
+  }
+  if (!RELAY_ID.test(envelope.message_id) || envelope.reply_to !== null && !RELAY_ID.test(envelope.reply_to)) {
+    return { ok: false, reason: "relay-assigned id is not a plain identifier" };
   }
   if (!isSealed(envelope.body)) return { ok: false, reason: "plaintext body" };
   const message = open(channelKey, channelId, envelope.body);
@@ -25825,7 +25830,7 @@ function resolveSelf(env = process.env) {
 }
 function formatInjection(envelope, message, channelLabel) {
   const parts = [
-    `partyline \xB7 ${message.from_name} @ ${envelope.from.machine_label} \u2192 you`,
+    `partyline \xB7 ${oneLine(message.from_name)} @ ${oneLine(message.from_label)} \u2192 you`,
     `channel ${channelLabel}`,
     `id ${envelope.message_id}`,
     "encrypted"
@@ -25834,6 +25839,9 @@ function formatInjection(envelope, message, channelLabel) {
   return `${parts.join(" \xB7 ")}
 
 ${message.body}`;
+}
+function oneLine(value) {
+  return value.replace(/\p{Cc}+/gu, " ");
 }
 function buildWireLine(opts) {
   return `${JSON.stringify({
@@ -26238,6 +26246,7 @@ server.registerTool(
       const sealed = seal(entry.seat.channel_key, entry.seat.channel_id, {
         from: entry.seat.party_id,
         from_name: entry.seat.display_name,
+        from_label: loadConfig().machine_label,
         to: recipientId,
         body
       });

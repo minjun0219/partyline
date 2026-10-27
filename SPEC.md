@@ -341,6 +341,10 @@ property intact.
 about a third larger than the text they carry. `reply_to` is an optional `message_id`
 the client received earlier; the relay does not interpret it.
 
+A `message_id` is 1–64 characters from `A-Z a-z 0-9 _ -`, and relays MUST assign ids
+in that form. Clients show these ids to the session and refuse a message whose ids
+are in any other form (§6).
+
 ```json
 {
   "message_id": "x_9Fh2",
@@ -411,7 +415,7 @@ plaintext = UTF-8(JSON object below)
 ```
 
 The cipher is AES-256-GCM with a random 12-byte `nonce` per message and a 16-byte
-`tag`; base64url is without padding. The plaintext is a JSON object with six string
+`tag`; base64url is without padding. The plaintext is a JSON object with seven string
 fields, all REQUIRED:
 
 ```json
@@ -419,6 +423,7 @@ fields, all REQUIRED:
   "id": "4b1f0c2e-…",
   "from": "p_Bd30nq",
   "from_name": "workshop-main",
+  "from_label": "workshop",
   "to": "p_Ka81mz",
   "sent_at": "2026-09-01T12:45:02.093Z",
   "body": "tag pushed, gate is green"
@@ -426,8 +431,9 @@ fields, all REQUIRED:
 ```
 
 `id` is chosen by the sender at random (a UUID is enough) and is distinct from the
-relay's `message_id`. `from` and `to` are party ids, `from_name` is the sender's
-display name when it sent, and `sent_at` is the sender's clock. The envelope's own
+relay's `message_id`. `from` and `to` are party ids, `from_name` and `from_label` are
+the sender's display name and machine label when it sent, and `sent_at` is the sender's
+clock. The envelope's own
 fields stay in the clear because the relay needs them to route; inside the ciphertext
 they are the sender's word, which the relay cannot change.
 
@@ -443,12 +449,17 @@ A recipient MUST check, before the message reaches the session:
    old side.
 4. `id` has not been delivered to the session before. Clients keep the ids they
    delivered for as long as check 3 would still accept them.
+5. The envelope's `message_id`, and its `reply_to` when present, have the form §5
+   gives. They are the only relay-supplied text a client shows the session, so one in
+   any other form is the relay writing into the session.
 
 A message that fails any check is not delivered. The client acknowledges it like a
 delivered one, so it does not block the inbox, and MUST make the refusal visible to
-the user (§7.4 applies to what is dropped as much as to what is sent). Clients SHOULD
-show the sealed `from_name` rather than the envelope's `display_name`, since only the
-former came from the sender. Record an `id` only once its message has reached the
+the user (§7.4 applies to what is dropped as much as to what is sent). Clients MUST
+take the sender's name and machine label from the sealed `from_name` and `from_label`,
+never from the envelope's `display_name` and `machine_label`, since only the former
+came from the sender. Apart from the ids of check 5, no envelope text reaches the
+session. Record an `id` only once its message has reached the
 session: the relay redelivers what was not acknowledged (above), and that copy is not
 a replay.
 
