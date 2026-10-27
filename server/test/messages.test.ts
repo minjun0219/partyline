@@ -24,7 +24,8 @@ describe("sending", () => {
       seq: number;
       recipient: RecipientView;
     };
-    expect(body.message_id).toMatch(/^x_/);
+    // §5: an id clients can show the session — 1–64 of A-Z a-z 0-9 _ -
+    expect(body.message_id).toMatch(/^x_[A-Za-z0-9_-]{1,62}$/);
     expect(body.seq).toBe(1);
     // §5: "queued" alone hides a misaddressed send — who got it must come back
     expect(body.recipient.party_id).toBe(b.party_id);

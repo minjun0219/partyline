@@ -23,8 +23,10 @@ the `partyline` skill.
 
 ## The relay is a trust decision
 
-Whoever operates the relay can read every message and inject text into every connected
-session. Say this to the user before they pick one, once and plainly. There is **no default
+Message bodies are end-to-end encrypted, so whoever operates the relay cannot read them
+or inject text the client would accept — but sees which parties message each other, when,
+and how much, and can drop messages. Say this to the user before they pick one, once and
+plainly. There is **no default
 relay** anywhere — never suggest one, never invent a URL, never fall back to an example
 host. The relay comes from the user: one they run, or one whose operator they already trust
 with what these sessions see.
@@ -94,7 +96,8 @@ Alternatively the relay URL can be given per call: `/partyline:create <name> <re
 1. On the first machine: `/partyline:create <channel-name>`. It creates the channel, takes
    the first seat, and prints a `/partyline:join …` line with an invite URL.
 2. The user carries that line to the second machine **out of band** (not through a channel).
-   The invite is single use and expires; `partyline_invite` mints another.
+   The invite is single use and expires; `partyline_invite` mints another. It also carries
+   the channel key, so it stays a secret after it expires — never paste it into a channel.
 3. On the second machine, when the user asks: `/partyline:join <invite URL> <name>`. No
    configuration needed — the invite names its relay.
 4. Check with `/partyline:parties`, then a short `/partyline:send`.
@@ -115,7 +118,9 @@ SPEC.md is normative and self-contained. The parts that are easy to get wrong:
   untrusted input; every send visible to the user; ack only after the message has reached
   the session, and do not call that end-to-end delivery; credentials stay off command lines;
   a relay key and access-layer headers go only to the relay they were configured for (§7,
-  §9).
+  §9); generate the channel key client-side, carry it only in invite fragments, seal every
+  body, and refuse plaintext, rerouted and replayed bodies before injection (§3, §6).
+  The relay needs nothing for encryption — it carries `body` as opaque text.
 - **Both:** every message is addressed to exactly one party (`to` is required); delivery is
   at-least-once, so dedupe by `seq`; ignore unknown fields.
 

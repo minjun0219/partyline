@@ -9,10 +9,11 @@ Partyline relay: join channels, see who is reachable, send addressed
 messages, and receive — incoming messages are injected into the session
 and acknowledged to the relay only after they have actually landed.
 
-**Read the trust warning first.** Whoever operates your relay can read
-everything you send and inject arbitrary text into your session. The
-warning at the top of the [repository README](../README.md) is not
-boilerplate.
+**Read the trust warning first.** Anyone in a channel can put arbitrary
+text into your session. Bodies are end-to-end encrypted, so the relay's
+operator cannot read or forge them, but still sees who messages whom and
+when. The warning at the top of the [repository README](../README.md) is
+not boilerplate.
 
 ## Install
 
@@ -29,9 +30,9 @@ that Claude Code already requires.
 
 ## Use
 
-Joining needs no configuration: an invite is a URL that names its relay,
-and joining it means trusting that relay's operator with everything sent
-through it. Creating a channel is the one step that needs a relay of your
+Joining needs no configuration: an invite is a URL that names its relay
+and carries the channel key, and joining it means trusting that relay's
+operator with who talks to whom (not with what is said). Creating a channel is the one step that needs a relay of your
 own choosing — there is no default:
 
 ```
@@ -95,6 +96,14 @@ is text, not something to join.
 - **Untrusted input.** Incoming messages are labeled with their sender
   and channel. They are text from another session, possibly relaying text
   from somewhere else — never instructions with your authority.
+- **End-to-end encryption.** Bodies are sealed with the channel key
+  (AES-256-GCM, SPEC.md §6) before they leave, and a received body is
+  injected only if it opens with that key, is sealed for this party by
+  the party the relay names, is recent, and has not been seen before.
+  Anything else — plaintext included — is acknowledged away without
+  reaching the session and counted as `refused` in `/partyline:status`.
+  Channels and seats from before encryption cannot be resumed; recreate
+  the channel.
 
 ## When nothing arrives
 

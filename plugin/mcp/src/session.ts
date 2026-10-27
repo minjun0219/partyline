@@ -9,6 +9,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { createConnection } from "node:net";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import type { SealedMessage } from "./e2e.ts";
 import type { MessageEnvelope } from "./types.ts";
 
 export interface SessionSelf {
@@ -67,16 +68,29 @@ export function resolveSelf(env: NodeJS.ProcessEnv = process.env): SessionSelf |
  * `from` field, so everything the session needs to act on the message — who
  * sent it, from where, and the id to put in reply_to — has to be in the text.
  * One header line, then the body verbatim. The header is the client's; the
- * body is the sender's (SPEC.md §7.3).
+ * body is the sender's (SPEC.md §7.3). Name and machine label come from
+ * inside the ciphertext, where the relay cannot change them, and the ids were
+ * checked to be plain identifiers (e2e.ts verify), so no relay text reaches
+ * the header. Control characters in the sender's own fields are flattened so
+ * the header stays one line.
  */
-export function formatInjection(envelope: MessageEnvelope, channelLabel: string): string {
+export function formatInjection(
+  envelope: MessageEnvelope,
+  message: SealedMessage,
+  channelLabel: string,
+): string {
   const parts = [
-    `partyline · ${envelope.from.display_name} @ ${envelope.from.machine_label} → you`,
+    `partyline · ${oneLine(message.from_name)} @ ${oneLine(message.from_label)} → you`,
     `channel ${channelLabel}`,
     `id ${envelope.message_id}`,
+    "encrypted",
   ];
   if (envelope.reply_to) parts.push(`reply_to ${envelope.reply_to}`);
-  return `${parts.join(" · ")}\n\n${envelope.body}`;
+  return `${parts.join(" · ")}\n\n${message.body}`;
+}
+
+function oneLine(value: string): string {
+  return value.replace(/\p{Cc}+/gu, " ");
 }
 
 /** The NDJSON line the session socket accepts. `session_id` must match the

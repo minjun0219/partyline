@@ -4,9 +4,10 @@
 > machines, plus a reference relay (Cloudflare Workers) and a Claude Code plugin that
 > implements the client. Everyone runs their own relay; there is no default one.
 
-Read this first: whoever operates a relay can read every message and inject arbitrary text
-into every connected session. Choosing the relay is the primary defense, and the protocol
-cannot make an untrusted relay safe.
+Read this first: anyone in a channel can put arbitrary text into every session in it.
+Message bodies are end-to-end encrypted under a key carried in the invite URL, so a relay
+operator cannot read or forge them, but still sees who messages whom, when, and how much.
+Choosing whom to invite is the primary defense.
 
 The model: a relay holds channels; a channel is a private set of parties (sessions) that may
 address each other, entered by invitation only; every message is addressed to exactly one
@@ -29,7 +30,8 @@ Things that are easy to get wrong:
 - Every message has exactly one recipient (`to` is required). To reach several parties, send several messages.
 - A send result means the relay accepted the message and says whether the recipient's stream is open — not that anyone read it. Ask for a reply when it matters.
 - A closed relay's key gates channel creation only. It is a Worker secret set at deploy time and goes in the client's `relay_key`, never in a file in a repository, a chat message or a tool argument. Invites work without it.
-- Invite URLs have the form `<relay_url>/join#<channel_id>/<invite_token>`; they are single use by default and expire. Hand them over out of band.
+- Invite URLs have the form `<relay_url>/join#<channel_id>/<invite_token>/<channel_key>`; the token is single use by default and expires, but the channel key in it stays valid while the channel exists. Hand them over out of band and treat them as secrets even after they expire. Invites without a key are refused.
+- Every body is sealed with the channel key (SPEC.md §6); a client refuses plaintext and anything that fails the checks. A relay needs nothing for this and cannot tell.
 
 ## Docs
 

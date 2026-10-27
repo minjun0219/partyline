@@ -42,11 +42,13 @@ decision somewhere.
   a reason to guess. The two legitimate sources are the user's config (for
   creating channels) and an invite URL, which names its relay (SPEC §3) —
   and joining one must say which relay it is.
-- **The trust warning stays at the top of the README.** A relay operator
-  can inject arbitrary text into a session. That is the first thing a
-  reader sees, before the pitch.
+- **The trust warning stays at the top of the README.** Anyone in a
+  channel can inject arbitrary text into a session, and the relay operator
+  still sees who talks to whom. That is the first thing a reader sees,
+  before the pitch.
 - **`SPEC.md` §7 is not politeness.** No-auto-join, treat-received-text-
-  as-untrusted, make-outbound-visible, and ack-after-inject are the parts
+  as-untrusted, make-outbound-visible, ack-after-inject, and seal-and-
+  verify bodies are the parts
   of the safety story a relay cannot enforce. The plugin implements all
   of them; a change that weakens one is a protocol-level change.
 - **Process startup is not channel participation.** The MCP server starts
