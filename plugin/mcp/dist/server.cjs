@@ -7256,9 +7256,9 @@ var require_dist = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/constants.js
+// ../../node_modules/.pnpm/ws@8.22.1/node_modules/ws/lib/constants.js
 var require_constants = __commonJS({
-  "../../node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/constants.js"(exports2, module2) {
+  "../../node_modules/.pnpm/ws@8.22.1/node_modules/ws/lib/constants.js"(exports2, module2) {
     "use strict";
     var BINARY_TYPES = ["nodebuffer", "arraybuffer", "fragments"];
     var hasBlob = typeof Blob !== "undefined";
@@ -7279,10 +7279,11 @@ var require_constants = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/buffer-util.js
+// ../../node_modules/.pnpm/ws@8.22.1/node_modules/ws/lib/buffer-util.js
 var require_buffer_util = __commonJS({
-  "../../node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/buffer-util.js"(exports2, module2) {
+  "../../node_modules/.pnpm/ws@8.22.1/node_modules/ws/lib/buffer-util.js"(exports2, module2) {
     "use strict";
+    var { websocketMask, websocketUnmask } = require("http");
     var { EMPTY_BUFFER } = require_constants();
     var FastBuffer = Buffer[Symbol.species];
     function concat(list, totalLength) {
@@ -7337,7 +7338,16 @@ var require_buffer_util = __commonJS({
       toBuffer,
       unmask: _unmask
     };
-    if (!process.env.WS_NO_BUFFER_UTIL) {
+    if (websocketMask) {
+      module2.exports.mask = function(source, mask, output, offset, length) {
+        if (length < 24) _mask(source, mask, output, offset, length);
+        else websocketMask(source, mask, output, offset, length);
+      };
+      module2.exports.unmask = function(buffer, mask) {
+        if (buffer.length < 24) _unmask(buffer, mask);
+        else websocketUnmask(buffer, mask);
+      };
+    } else if (!process.env.WS_NO_BUFFER_UTIL) {
       try {
         const bufferUtil = require("bufferutil");
         module2.exports.mask = function(source, mask, output, offset, length) {
@@ -7354,9 +7364,9 @@ var require_buffer_util = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/limiter.js
+// ../../node_modules/.pnpm/ws@8.22.1/node_modules/ws/lib/limiter.js
 var require_limiter = __commonJS({
-  "../../node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/limiter.js"(exports2, module2) {
+  "../../node_modules/.pnpm/ws@8.22.1/node_modules/ws/lib/limiter.js"(exports2, module2) {
     "use strict";
     var kDone = /* @__PURE__ */ Symbol("kDone");
     var kRun = /* @__PURE__ */ Symbol("kRun");
@@ -7404,9 +7414,9 @@ var require_limiter = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/permessage-deflate.js
+// ../../node_modules/.pnpm/ws@8.22.1/node_modules/ws/lib/permessage-deflate.js
 var require_permessage_deflate = __commonJS({
-  "../../node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/permessage-deflate.js"(exports2, module2) {
+  "../../node_modules/.pnpm/ws@8.22.1/node_modules/ws/lib/permessage-deflate.js"(exports2, module2) {
     "use strict";
     var zlib = require("zlib");
     var bufferUtil = require_buffer_util();
@@ -7787,9 +7797,9 @@ var require_permessage_deflate = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/validation.js
+// ../../node_modules/.pnpm/ws@8.22.1/node_modules/ws/lib/validation.js
 var require_validation2 = __commonJS({
-  "../../node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/validation.js"(exports2, module2) {
+  "../../node_modules/.pnpm/ws@8.22.1/node_modules/ws/lib/validation.js"(exports2, module2) {
     "use strict";
     var { isUtf8 } = require("buffer");
     var { hasBlob } = require_constants();
@@ -7988,9 +7998,9 @@ var require_validation2 = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/receiver.js
+// ../../node_modules/.pnpm/ws@8.22.1/node_modules/ws/lib/receiver.js
 var require_receiver = __commonJS({
-  "../../node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/receiver.js"(exports2, module2) {
+  "../../node_modules/.pnpm/ws@8.22.1/node_modules/ws/lib/receiver.js"(exports2, module2) {
     "use strict";
     var { Writable } = require("stream");
     var PerMessageDeflate2 = require_permessage_deflate();
@@ -8611,9 +8621,9 @@ var require_receiver = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/sender.js
+// ../../node_modules/.pnpm/ws@8.22.1/node_modules/ws/lib/sender.js
 var require_sender = __commonJS({
-  "../../node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/sender.js"(exports2, module2) {
+  "../../node_modules/.pnpm/ws@8.22.1/node_modules/ws/lib/sender.js"(exports2, module2) {
     "use strict";
     var { Duplex } = require("stream");
     var { randomFillSync } = require("crypto");
@@ -8732,12 +8742,15 @@ var require_sender = __commonJS({
           target[2] = target[3] = 0;
           target.writeUIntBE(dataLength, 4, 6);
         }
-        if (!options.mask) return [target, data];
+        if (!options.mask) {
+          return dataLength ? [target, data] : [target];
+        }
         target[1] |= 128;
         target[offset - 4] = mask[0];
         target[offset - 3] = mask[1];
         target[offset - 2] = mask[2];
         target[offset - 1] = mask[3];
+        if (!dataLength) return [target];
         if (skipMasking) return [target, data];
         if (merge2) {
           applyMask(data, mask, target, offset, dataLength);
@@ -9104,9 +9117,9 @@ var require_sender = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/event-target.js
+// ../../node_modules/.pnpm/ws@8.22.1/node_modules/ws/lib/event-target.js
 var require_event_target = __commonJS({
-  "../../node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/event-target.js"(exports2, module2) {
+  "../../node_modules/.pnpm/ws@8.22.1/node_modules/ws/lib/event-target.js"(exports2, module2) {
     "use strict";
     var { kForOnEventAttribute, kListener } = require_constants();
     var kCode = /* @__PURE__ */ Symbol("kCode");
@@ -9333,9 +9346,9 @@ var require_event_target = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/extension.js
+// ../../node_modules/.pnpm/ws@8.22.1/node_modules/ws/lib/extension.js
 var require_extension = __commonJS({
-  "../../node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/extension.js"(exports2, module2) {
+  "../../node_modules/.pnpm/ws@8.22.1/node_modules/ws/lib/extension.js"(exports2, module2) {
     "use strict";
     var { tokenChars } = require_validation2();
     function push(dest, name, elem) {
@@ -9486,9 +9499,9 @@ var require_extension = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/websocket.js
+// ../../node_modules/.pnpm/ws@8.22.1/node_modules/ws/lib/websocket.js
 var require_websocket = __commonJS({
-  "../../node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/websocket.js"(exports2, module2) {
+  "../../node_modules/.pnpm/ws@8.22.1/node_modules/ws/lib/websocket.js"(exports2, module2) {
     "use strict";
     var EventEmitter = require("events");
     var https = require("https");
@@ -10095,9 +10108,14 @@ var require_websocket = __commonJS({
         opts.auth = `${parsedUrl.username}:${parsedUrl.password}`;
       }
       if (isIpcUrl) {
-        const parts = opts.path.split(":");
-        opts.socketPath = parts[0];
-        opts.path = parts[1];
+        const i = opts.path.indexOf(":");
+        if (i === -1) {
+          opts.socketPath = opts.path;
+          opts.path = "";
+        } else {
+          opts.socketPath = opts.path.slice(0, i);
+          opts.path = opts.path.slice(i + 1);
+        }
       }
       let req;
       if (opts.followRedirects) {
@@ -10395,9 +10413,9 @@ var require_websocket = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/stream.js
+// ../../node_modules/.pnpm/ws@8.22.1/node_modules/ws/lib/stream.js
 var require_stream = __commonJS({
-  "../../node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/stream.js"(exports2, module2) {
+  "../../node_modules/.pnpm/ws@8.22.1/node_modules/ws/lib/stream.js"(exports2, module2) {
     "use strict";
     var WebSocket2 = require_websocket();
     var { Duplex } = require("stream");
@@ -10493,9 +10511,9 @@ var require_stream = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/subprotocol.js
+// ../../node_modules/.pnpm/ws@8.22.1/node_modules/ws/lib/subprotocol.js
 var require_subprotocol = __commonJS({
-  "../../node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/subprotocol.js"(exports2, module2) {
+  "../../node_modules/.pnpm/ws@8.22.1/node_modules/ws/lib/subprotocol.js"(exports2, module2) {
     "use strict";
     var { tokenChars } = require_validation2();
     function parse3(header) {
@@ -10538,9 +10556,9 @@ var require_subprotocol = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/websocket-server.js
+// ../../node_modules/.pnpm/ws@8.22.1/node_modules/ws/lib/websocket-server.js
 var require_websocket_server = __commonJS({
-  "../../node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/websocket-server.js"(exports2, module2) {
+  "../../node_modules/.pnpm/ws@8.22.1/node_modules/ws/lib/websocket-server.js"(exports2, module2) {
     "use strict";
     var EventEmitter = require("events");
     var http = require("http");
@@ -25447,7 +25465,7 @@ function remember(seen, message) {
   seen[message.id] = Date.parse(message.sent_at) + MAX_AGE_MS + SKEW_MS;
 }
 
-// ../../node_modules/.pnpm/ws@8.22.0/node_modules/ws/wrapper.mjs
+// ../../node_modules/.pnpm/ws@8.22.1/node_modules/ws/wrapper.mjs
 var import_stream = __toESM(require_stream(), 1);
 var import_extension = __toESM(require_extension(), 1);
 var import_permessage_deflate = __toESM(require_permessage_deflate(), 1);
