@@ -32,3 +32,12 @@ source), and `SPEC.md` is a draft that may break without a migration path.
   notes. The injected header names the sender as the ciphertext does and marks the
   message `encrypted`.
 - The relay is unchanged on the wire: it carries `body` as opaque text, as before.
+
+### Fixed
+
+- `partyline_destroy` and `partyline_leave` call the relay first and discard the local
+  seat only after it answers. A failed call (network error, relay down, 5xx) used to drop
+  the seat anyway, so a channel meant to be burned stayed open and this session could no
+  longer destroy it, and a failed leave kept the display name taken until the party timed
+  out. Now the seat stays and the call can be retried. A `not_found` or `gone` answer
+  counts as already released and also discards the seat.

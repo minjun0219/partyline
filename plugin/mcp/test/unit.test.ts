@@ -16,6 +16,7 @@ import {
 import { generateChannelKey } from "../src/e2e.ts";
 import { formatInviteUrl, parseInviteUrl } from "../src/invite.ts";
 import { ChannelConnection } from "../src/receive.ts";
+import { endSeat, RelayError } from "../src/relay.ts";
 import { buildWireLine, formatInjection } from "../src/session.ts";
 
 const KEY = generateChannelKey();
@@ -618,5 +619,39 @@ describe("access-layer headers on the wire", () => {
     } finally {
       server.close();
     }
+  });
+});
+
+describe("endSeat (leave/destroy ordering)", () => {
+  it("reports ended when the relay call succeeds", async () => {
+    await expect(endSeat(async () => {})).resolves.toBe("ended");
+  });
+
+  it("treats not_found and gone as an already-dead seat", async () => {
+    for (const [status, code] of [
+      [404, "not_found"],
+      [410, "gone"],
+    ] as const) {
+      await expect(
+        endSeat(async () => {
+          throw new RelayError(status, code, code);
+        }),
+      ).resolves.toBe("already_gone");
+    }
+  });
+
+  it("rethrows every other failure so the caller keeps the seat", async () => {
+    const serverError = new RelayError(503, "unavailable", "relay down");
+    await expect(
+      endSeat(async () => {
+        throw serverError;
+      }),
+    ).rejects.toBe(serverError);
+    const network = new TypeError("fetch failed");
+    await expect(
+      endSeat(async () => {
+        throw network;
+      }),
+    ).rejects.toBe(network);
   });
 });
