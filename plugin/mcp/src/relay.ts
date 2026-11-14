@@ -186,6 +186,26 @@ export async function destroyChannel(
   });
 }
 
+/**
+ * Run a call that ends this party's seat (leave or destroy) and report whether
+ * the relay still knew the seat. `not_found` (404) and `gone` (410) mean the
+ * seat is already dead at the relay — an invalid token or a destroyed channel
+ * (SPEC.md §4) — so the caller may discard it just as after a success. Any
+ * other failure is rethrown: the seat may still be live, and the caller must
+ * keep its local state so the call can be retried.
+ */
+export async function endSeat(call: () => Promise<void>): Promise<"ended" | "already_gone"> {
+  try {
+    await call();
+    return "ended";
+  } catch (err) {
+    if (err instanceof RelayError && (err.status === 404 || err.status === 410)) {
+      return "already_gone";
+    }
+    throw err;
+  }
+}
+
 export async function ackInbox(
   relayUrl: string,
   channelId: string,
