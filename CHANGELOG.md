@@ -39,5 +39,14 @@ source), and `SPEC.md` is a draft that may break without a migration path.
   seat only after it answers. A failed call (network error, relay down, 5xx) used to drop
   the seat anyway, so a channel meant to be burned stayed open and this session could no
   longer destroy it, and a failed leave kept the display name taken until the party timed
-  out. Now the seat stays and the call can be retried. A `not_found` or `gone` answer
-  counts as already released and also discards the seat.
+  out. Now the seat stays, receiving resumes, and the result says the call can be
+  retried. The relay's own `gone` and `not_found` answers discard the seat; a 404 from
+  something in front of the relay does not. A destroy answered `not_found` says the
+  channel may still be live, since only this seat is known to be invalid.
+- Both calls give up after 15 seconds instead of waiting out the fetch default, and
+  receiving pauses while they run, so a party being cut off by a destroy stops arriving
+  at once. A second leave or destroy on the same channel is refused while one runs.
+- `partyline_leave` takes `force`, to discard the seat when the relay is gone for good;
+  the party then stays at the relay until it times out.
+- A message injected while its channel was being left no longer writes the discarded
+  seat back to disk.

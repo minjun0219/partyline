@@ -16,8 +16,9 @@ import {
 import { generateChannelKey } from "../src/e2e.ts";
 import { formatInviteUrl, parseInviteUrl } from "../src/invite.ts";
 import { ChannelConnection } from "../src/receive.ts";
-import { endSeat, RelayError } from "../src/relay.ts";
+import { RelayError } from "../src/relay.ts";
 import { buildWireLine, formatInjection } from "../src/session.ts";
+import { endSeat } from "../src/teardown.ts";
 
 const KEY = generateChannelKey();
 
@@ -622,36 +623,189 @@ describe("access-layer headers on the wire", () => {
   });
 });
 
-describe("endSeat (leave/destroy ordering)", () => {
-  it("reports ended when the relay call succeeds", async () => {
-    await expect(endSeat(async () => {})).resolves.toBe("ended");
+describe("leave/destroy teardown", () => {
+  function receiver(status = "connected") {
+    const r = {
+      status,
+      starts: 0,
+      start() {
+        r.starts += 1;
+        r.status = "connecting";
+      },
+      stop() {
+        r.status = "stopped";
+      },
+    };
+    return r;
+  }
+
+  it("stops receiving, asks the relay, and only then releases the seat", async () => {
+    const r = receiver();
+    let released = 0;
+    const result = await endSeat(
+      r,
+      async () => {
+        expect(r.status).toBe("stopped");
+        expect(released).toBe(0);
+      },
+      () => {
+        released += 1;
+      },
+    );
+    expect(result).toEqual({ outcome: "ended" });
+    expect(released).toBe(1);
+    expect(r.starts).toBe(0);
   });
 
-  it("treats not_found and gone as an already-dead seat", async () => {
-    for (const [status, code] of [
-      [404, "not_found"],
-      [410, "gone"],
-    ] as const) {
+  it("keeps the seat and resumes receiving when the relay does not confirm", async () => {
+    for (const err of [
+      new RelayError(503, "internal", "relay down"),
+      new TypeError("fetch failed"),
+      new RelayError(0, "timeout", "did not answer in time"),
+      // A 404 from something in front of the relay says nothing about the seat.
+      new RelayError(404, "not_relay", "404 that is not a Partyline answer"),
+    ]) {
+      const r = receiver();
+      let released = 0;
       await expect(
-        endSeat(async () => {
-          throw new RelayError(status, code, code);
-        }),
-      ).resolves.toBe("already_gone");
+        endSeat(
+          r,
+          async () => {
+            throw err;
+          },
+          () => {
+            released += 1;
+          },
+        ),
+      ).rejects.toBe(err);
+      expect(released).toBe(0);
+      expect(r.starts).toBe(1);
     }
   });
 
-  it("rethrows every other failure so the caller keeps the seat", async () => {
-    const serverError = new RelayError(503, "unavailable", "relay down");
+  it("tells a destroyed channel from a seat the relay no longer accepts", async () => {
+    for (const [err, outcome] of [
+      [new RelayError(410, "gone", "destroyed"), "channel_gone"],
+      [new RelayError(404, "not_found", "no such channel"), "seat_invalid"],
+    ] as const) {
+      let released = 0;
+      const result = await endSeat(
+        receiver(),
+        async () => {
+          throw err;
+        },
+        () => {
+          released += 1;
+        },
+      );
+      expect(result).toEqual({ outcome });
+      expect(released).toBe(1);
+    }
+  });
+
+  it("leaves a halted connection halted when the call fails", async () => {
+    const r = receiver("stopped");
     await expect(
-      endSeat(async () => {
-        throw serverError;
-      }),
-    ).rejects.toBe(serverError);
-    const network = new TypeError("fetch failed");
+      endSeat(
+        r,
+        async () => {
+          throw new TypeError("fetch failed");
+        },
+        () => {},
+      ),
+    ).rejects.toThrow("fetch failed");
+    expect(r.starts).toBe(0);
+  });
+
+  it("discards the seat without confirmation only when forced", async () => {
+    const r = receiver();
+    const err = new TypeError("getaddrinfo ENOTFOUND");
+    let released = 0;
+    const result = await endSeat(
+      r,
+      async () => {
+        throw err;
+      },
+      () => {
+        released += 1;
+      },
+      true,
+    );
+    expect(result).toEqual({ outcome: "unconfirmed", error: err });
+    expect(released).toBe(1);
+    expect(r.starts).toBe(0);
+  });
+
+  it("refuses a second teardown of the same channel while one is in flight", async () => {
+    const r = receiver();
+    let answer: () => void = () => {};
+    const first = endSeat(
+      r,
+      () =>
+        new Promise<void>((resolve) => {
+          answer = resolve;
+        }),
+      () => {},
+    );
     await expect(
-      endSeat(async () => {
-        throw network;
-      }),
-    ).rejects.toBe(network);
+      endSeat(
+        r,
+        async () => {},
+        () => {},
+      ),
+    ).rejects.toMatchObject({ code: "busy" });
+    answer();
+    await expect(first).resolves.toEqual({ outcome: "ended" });
+    // Done, so the next one may run.
+    await expect(
+      endSeat(
+        r,
+        async () => {},
+        () => {},
+      ),
+    ).resolves.toEqual({ outcome: "ended" });
+  });
+
+  it("lets a stopped connection open its stream again", async () => {
+    const { WebSocketServer } = await import("ws");
+    const wss = new WebSocketServer({ port: 0 });
+    await new Promise<void>((resolve) => wss.on("listening", resolve));
+    const { port } = wss.address() as { port: number };
+    let connections = 0;
+    wss.on("connection", () => {
+      connections += 1;
+    });
+    const connection = new ChannelConnection({
+      relayUrl: `http://127.0.0.1:${port}`,
+      seat: {
+        relay_url: `http://127.0.0.1:${port}`,
+        channel_id: "c_1",
+        channel_name: "",
+        party_id: "p_1",
+        party_token: "t",
+        display_name: "me",
+        last_injected_seq: 0,
+        channel_key: KEY,
+        seen_ids: {},
+      },
+      persistSeat: () => {},
+      inject: async () => {},
+      note: () => {},
+    });
+    connection.start();
+    try {
+      await new Promise((r) => setTimeout(r, 100));
+      expect(connection.status).toBe("connected");
+      connection.stop();
+      expect(connection.status).toBe("stopped");
+      // A failed leave or destroy resumes receiving with start().
+      connection.start();
+      await new Promise((r) => setTimeout(r, 100));
+      expect(connection.status).toBe("connected");
+      expect(connections).toBe(2);
+    } finally {
+      connection.stop();
+      wss.close();
+    }
   });
 });
