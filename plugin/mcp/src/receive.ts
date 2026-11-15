@@ -85,7 +85,11 @@ export class ChannelConnection {
 
   constructor(private readonly deps: ConnectionDeps) {}
 
+  /** Open the stream — also after stop(), when a leave or destroy failed and receiving resumes. */
   start(): void {
+    this.deliberate = false;
+    this.stopReason = null;
+    this.backoffMs = BACKOFF_BASE_MS;
     this.connect();
   }
 
@@ -93,6 +97,7 @@ export class ChannelConnection {
     this.deliberate = true;
     this.status = "stopped";
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
     this.stopWatchdog();
     this.ws?.close(1000, "client stopped");
     this.ws = null;
@@ -222,6 +227,9 @@ export class ChannelConnection {
   }
 
   private async handleMessage(ws: WebSocket, envelope: MessageEnvelope): Promise<void> {
+    // Stopped while this waited in the chain: inject nothing more. Unacked, it
+    // stays in the relay inbox for a resumed stream, or goes with the seat.
+    if (this.deliberate) return;
     const { seat } = this.deps;
     if (envelope.seq <= seat.last_injected_seq) {
       // Already delivered in a previous life (persisted cursor) — this is a

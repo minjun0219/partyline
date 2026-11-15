@@ -30,13 +30,21 @@ export function accessHeadersFor(relayUrl: string): Record<string, string> {
 }
 
 async function request<T>(relayUrl: string, path: string, init: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${relayUrl}${path}`, {
-    ...init,
-    headers: { ...accessHeadersFor(relayUrl), ...(init.headers as Record<string, string>) },
-    // The protocol never redirects. Following one would carry access-layer
-    // headers to wherever it points — fetch strips only Authorization.
-    redirect: "manual",
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${relayUrl}${path}`, {
+      ...init,
+      headers: { ...accessHeadersFor(relayUrl), ...(init.headers as Record<string, string>) },
+      // The protocol never redirects. Following one would carry access-layer
+      // headers to wherever it points — fetch strips only Authorization.
+      redirect: "manual",
+    });
+  } catch (err) {
+    if (err instanceof Error && err.name === "TimeoutError") {
+      throw new RelayError(0, "timeout", `${relayUrl} did not answer in time`);
+    }
+    throw err;
+  }
   if (res.status === 204) return undefined as T;
   const parsed = (await res.json().catch(() => null)) as (ErrorBody & T) | null;
   // Every relay answer is JSON and every error carries the body of SPEC.md §2;
@@ -58,6 +66,13 @@ async function request<T>(relayUrl: string, path: string, init: RequestInit = {}
   }
   return parsed;
 }
+
+/**
+ * Leave and destroy are answered before the session gets its tool result back,
+ * and a stalled relay would otherwise hold that call for minutes (the fetch
+ * default). Failing fast leaves the seat in place for a retry.
+ */
+const TEARDOWN_TIMEOUT_MS = 15_000;
 
 function bearer(token: string): Record<string, string> {
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
@@ -154,6 +169,7 @@ export async function leaveChannel(
 ): Promise<void> {
   await request(relayUrl, `/v1/channels/${channelId}/parties/me`, {
     method: "DELETE",
+    signal: AbortSignal.timeout(TEARDOWN_TIMEOUT_MS),
     headers: bearer(partyToken),
   });
 }
@@ -182,8 +198,21 @@ export async function destroyChannel(
 ): Promise<void> {
   await request(relayUrl, `/v1/channels/${channelId}`, {
     method: "DELETE",
+    signal: AbortSignal.timeout(TEARDOWN_TIMEOUT_MS),
     headers: bearer(partyToken),
   });
+}
+
+/**
+ * The relay's own answer that a credential leads nowhere (SPEC.md §2):
+ * `not_found` — unknown or invalid, which also hides whether the channel
+ * exists — or `gone` — the channel was destroyed. Judged by the error code,
+ * not the status: a 404 from something in front of the relay (`not_relay`)
+ * says nothing about the seat or the invite.
+ */
+export function deadCredential(err: unknown): "not_found" | "gone" | null {
+  if (!(err instanceof RelayError)) return null;
+  return err.code === "not_found" || err.code === "gone" ? err.code : null;
 }
 
 export async function ackInbox(
