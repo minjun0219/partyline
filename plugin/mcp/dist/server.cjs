@@ -25776,7 +25776,7 @@ var ChannelConnection = class {
     this.status = "backoff";
     this.fail(cause);
     if (this.connectedAt !== null) {
-      this.downSince = Date.now();
+      this.downSince = this.lastErrorAt;
       this.downCause = cause;
     }
     this.connectedAt = null;
