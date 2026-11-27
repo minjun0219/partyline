@@ -212,7 +212,8 @@ export class ChannelConnection {
     this.status = "backoff";
     this.fail(cause);
     if (this.connectedAt !== null) {
-      this.downSince = Date.now();
+      // Same instant as lastErrorAt: a second Date.now() can land 1 ms later.
+      this.downSince = this.lastErrorAt;
       this.downCause = cause;
     }
     this.connectedAt = null;
